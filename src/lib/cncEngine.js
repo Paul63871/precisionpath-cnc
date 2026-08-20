@@ -84,6 +84,7 @@ export function calculate(input) {
   if (featureDepth && featureDepth > 0 && doc > 0) {
     passes = Math.max(1, Math.ceil(featureDepth / doc));
     stepdown = featureDepth / passes;
+    doc = stepdown; // actual per-pass depth never exceeds the feature depth
   }
 
   // --- Feed multipliers from tool geometry ---
