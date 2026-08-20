@@ -5,6 +5,7 @@ import { useEntityList } from "@/lib/useEntityList";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import NumberField from "@/components/NumberField";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 
 const EMPTY = { name: "", hp: 5, max_rpm: 10000, min_rpm: 60, max_ipm: 200, notes: "" };
@@ -30,19 +31,19 @@ function MachineDialog({ initial, onSave, trigger }) {
           </div>
           <div className="space-y-1.5">
             <Label className="text-xs text-muted-foreground">Spindle HP</Label>
-            <Input type="number" step="0.1" value={form.hp} onChange={(e) => set("hp", parseFloat(e.target.value))} className="h-9" />
+            <NumberField className="h-9" value={form.hp} onValueChange={(n) => set("hp", n)} />
           </div>
           <div className="space-y-1.5">
             <Label className="text-xs text-muted-foreground">Max Feed (IPM)</Label>
-            <Input type="number" value={form.max_ipm} onChange={(e) => set("max_ipm", parseFloat(e.target.value))} className="h-9" />
+            <NumberField className="h-9" value={form.max_ipm} onValueChange={(n) => set("max_ipm", n)} />
           </div>
           <div className="space-y-1.5">
             <Label className="text-xs text-muted-foreground">Max RPM</Label>
-            <Input type="number" value={form.max_rpm} onChange={(e) => set("max_rpm", parseFloat(e.target.value))} className="h-9" />
+            <NumberField className="h-9" value={form.max_rpm} onValueChange={(n) => set("max_rpm", n)} />
           </div>
           <div className="space-y-1.5">
             <Label className="text-xs text-muted-foreground">Min RPM</Label>
-            <Input type="number" value={form.min_rpm} onChange={(e) => set("min_rpm", parseFloat(e.target.value))} className="h-9" />
+            <NumberField className="h-9" value={form.min_rpm} onValueChange={(n) => set("min_rpm", n)} />
           </div>
           <div className="space-y-1.5 col-span-2">
             <Label className="text-xs text-muted-foreground">Notes</Label>

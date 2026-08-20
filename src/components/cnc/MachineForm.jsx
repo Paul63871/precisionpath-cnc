@@ -1,7 +1,7 @@
 import React from "react";
 import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
 import { UNITS, feedFromImp, feedToImp, powerFromImp, powerToImp } from "@/lib/units";
+import NumberField from "@/components/NumberField";
 
 export default function MachineForm({ value, onChange, units = "imperial", profiles = [], onLoadProfile }) {
   const set = (k, v) => onChange({ ...value, [k]: v });
@@ -28,19 +28,19 @@ export default function MachineForm({ value, onChange, units = "imperial", profi
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1.5">
           <Label className="text-xs text-muted-foreground">Spindle ({u.power})</Label>
-          <Input type="number" step="0.1" min="0.1" value={powerFromImp(value.hp, units)} onChange={(e) => set("hp", powerToImp(parseFloat(e.target.value), units))} className="h-9" />
+          <NumberField className="h-9" value={powerFromImp(value.hp, units)} onValueChange={(n) => set("hp", powerToImp(n, units))} />
         </div>
         <div className="space-y-1.5">
           <Label className="text-xs text-muted-foreground">Max Feed ({u.feed})</Label>
-          <Input type="number" step="1" min="1" value={feedFromImp(value.maxIpm, units)} onChange={(e) => set("maxIpm", feedToImp(parseFloat(e.target.value), units))} className="h-9" />
+          <NumberField className="h-9" value={feedFromImp(value.maxIpm, units)} onValueChange={(n) => set("maxIpm", feedToImp(n, units))} />
         </div>
         <div className="space-y-1.5">
           <Label className="text-xs text-muted-foreground">Max RPM</Label>
-          <Input type="number" step="100" min="100" value={value.maxRpm} onChange={(e) => set("maxRpm", parseFloat(e.target.value))} className="h-9" />
+          <NumberField className="h-9" value={value.maxRpm} onValueChange={(n) => set("maxRpm", n)} />
         </div>
         <div className="space-y-1.5">
           <Label className="text-xs text-muted-foreground">Min RPM</Label>
-          <Input type="number" step="100" min="0" value={value.minRpm} onChange={(e) => set("minRpm", parseFloat(e.target.value))} className="h-9" />
+          <NumberField className="h-9" value={value.minRpm} onValueChange={(n) => set("minRpm", n)} />
         </div>
       </div>
     </div>

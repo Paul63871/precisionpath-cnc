@@ -1,9 +1,9 @@
 import React from "react";
 import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { TOOL_TYPES, TOOL_MATERIALS, COATINGS, FIELD_DEFS } from "@/lib/cncData";
 import { UNITS, lenFromImp, lenToImp } from "@/lib/units";
+import NumberField from "@/components/NumberField";
 
 export default function ToolForm({ value, onChange, units = "imperial" }) {
   const set = (k, v) => onChange({ ...value, [k]: v });
@@ -19,7 +19,7 @@ export default function ToolForm({ value, onChange, units = "imperial" }) {
       return (
         <div key={key} className="space-y-1.5">
           <Label className="text-xs text-muted-foreground">{def.label} ({u.length})</Label>
-          <Input type="number" step={def.step} min="0" value={lenFromImp(raw, units)} onChange={(e) => set(key, lenToImp(parseFloat(e.target.value), units))} className="h-9" />
+          <NumberField className="h-9" value={lenFromImp(raw, units)} onValueChange={(n) => set(key, lenToImp(n, units))} />
         </div>
       );
     }
@@ -27,14 +27,14 @@ export default function ToolForm({ value, onChange, units = "imperial" }) {
       return (
         <div key={key} className="space-y-1.5">
           <Label className="text-xs text-muted-foreground">{def.label} (°)</Label>
-          <Input type="number" step={def.step} min="0" max="180" value={raw} onChange={(e) => set(key, parseFloat(e.target.value))} className="h-9" />
+          <NumberField className="h-9" value={raw} onValueChange={(n) => set(key, n)} />
         </div>
       );
     }
     return (
       <div key={key} className="space-y-1.5">
         <Label className="text-xs text-muted-foreground">{def.label}</Label>
-        <Input type="number" step={def.step} min={def.min} max={def.max} value={raw} onChange={(e) => set(key, parseInt(e.target.value || def.min))} className="h-9" />
+        <NumberField className="h-9" value={raw} onValueChange={(n) => set(key, Math.max(def.min, Math.round(n)))} />
       </div>
     );
   };
@@ -59,7 +59,7 @@ export default function ToolForm({ value, onChange, units = "imperial" }) {
       </div>
       <div className="space-y-1.5">
         <Label className="text-xs text-muted-foreground">Diameter ({u.length})</Label>
-        <Input type="number" step="0.001" min="0" value={lenFromImp(value.diameter, units)} onChange={(e) => set("diameter", lenToImp(parseFloat(e.target.value), units))} className="h-9" />
+        <NumberField className="h-9" value={lenFromImp(value.diameter, units)} onValueChange={(n) => set("diameter", lenToImp(n, units))} />
       </div>
       <div className="grid grid-cols-3 gap-3">
         {fields.map(renderField)}

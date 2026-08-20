@@ -4,6 +4,7 @@ import { useEntityList } from "@/lib/useEntityList";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import NumberField from "@/components/NumberField";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 
 const EMPTY = {
@@ -36,27 +37,27 @@ function MaterialDialog({ initial, onSave, trigger }) {
           </div>
           <div className="space-y-1.5">
             <Label className="text-xs text-muted-foreground">HP factor</Label>
-            <Input type="number" step="0.01" value={form.hp_factor} onChange={(e) => set("hp_factor", parseFloat(e.target.value))} className="h-9" />
+            <NumberField className="h-9" value={form.hp_factor} onValueChange={(n) => set("hp_factor", n)} />
           </div>
           <div className="space-y-1.5">
             <Label className="text-xs text-muted-foreground">SFM min</Label>
-            <Input type="number" value={form.sfm_min} onChange={(e) => set("sfm_min", parseFloat(e.target.value))} className="h-9" />
+            <NumberField className="h-9" value={form.sfm_min} onValueChange={(n) => set("sfm_min", n)} />
           </div>
           <div className="space-y-1.5">
             <Label className="text-xs text-muted-foreground">SFM max</Label>
-            <Input type="number" value={form.sfm_max} onChange={(e) => set("sfm_max", parseFloat(e.target.value))} className="h-9" />
+            <NumberField className="h-9" value={form.sfm_max} onValueChange={(n) => set("sfm_max", n)} />
           </div>
           <div className="space-y-1.5">
             <Label className="text-xs text-muted-foreground">Chip load factor</Label>
-            <Input type="number" step="0.01" value={form.chip_load_factor} onChange={(e) => set("chip_load_factor", parseFloat(e.target.value))} className="h-9" />
+            <NumberField className="h-9" value={form.chip_load_factor} onValueChange={(n) => set("chip_load_factor", n)} />
           </div>
           <div className="space-y-1.5">
             <Label className="text-xs text-muted-foreground">Slot depth factor</Label>
-            <Input type="number" step="0.01" value={form.slot_depth_factor} onChange={(e) => set("slot_depth_factor", parseFloat(e.target.value))} className="h-9" />
+            <NumberField className="h-9" value={form.slot_depth_factor} onValueChange={(n) => set("slot_depth_factor", n)} />
           </div>
           <div className="space-y-1.5 col-span-2">
             <Label className="text-xs text-muted-foreground">Profile depth factor</Label>
-            <Input type="number" step="0.01" value={form.profile_depth_factor} onChange={(e) => set("profile_depth_factor", parseFloat(e.target.value))} className="h-9" />
+            <NumberField className="h-9" value={form.profile_depth_factor} onValueChange={(n) => set("profile_depth_factor", n)} />
           </div>
         </div>
         <DialogFooter><Button onClick={submit} disabled={!form.name}>Save</Button></DialogFooter>
