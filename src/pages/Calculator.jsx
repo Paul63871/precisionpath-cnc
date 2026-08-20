@@ -8,7 +8,7 @@ import MachineForm from "@/components/cnc/MachineForm";
 import ResultsPanel from "@/components/cnc/ResultsPanel";
 import BrandLookup from "@/components/cnc/BrandLookup";
 import { calculate } from "@/lib/cncEngine";
-import { PART_MATERIALS, TOOL_TYPES } from "@/lib/cncData";
+import { PART_MATERIALS, TOOL_TYPES, OPERATIONS } from "@/lib/cncData";
 import { UNITS, lenFromImp, lenToImp } from "@/lib/units";
 import NumberField from "@/components/NumberField";
 import { Button } from "@/components/ui/button";
@@ -91,6 +91,7 @@ export default function Calculator() {
   }, [customMaterials]);
 
   const selectedMaterial = combinedMaterials.find((m) => m.id === materialId) || PART_MATERIALS[0];
+  const selectedOp = OPERATIONS.find((o) => o.id === operationId);
 
   const result = useMemo(() => {
     if (!tool.diameter || tool.diameter <= 0) return null;
@@ -142,9 +143,9 @@ export default function Calculator() {
               onChange={(v) => { if (v.materialId) setMaterialId(v.materialId); if (v.operationId) setOperationId(v.operationId); }}
             />
           </Section>
-          {(operationId === "hem_rough" || operationId === "hem_finish") && (
-            <Section icon={Sliders} title="Adaptive Path Settings">
-              <p className="text-[11px] text-muted-foreground mb-3">HSMWorks adaptive toolpaths hold a constant radial load. Enter the values from your CAM to match the actual cut; leave blank to auto-calculate.</p>
+          {selectedOp?.adaptive && (
+            <Section icon={Sliders} title="Path Engagement">
+              <p className="text-[11px] text-muted-foreground mb-3">{selectedOp.name} holds a set radial engagement in CAM (HSMWorks). Enter the radial load and axial step-down from your toolpath to match the actual cut; leave blank to auto-calculate.</p>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label className="text-xs text-muted-foreground">Radial Load ({UNITS[units].length})</Label>

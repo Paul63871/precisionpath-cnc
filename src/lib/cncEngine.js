@@ -66,15 +66,21 @@ export function calculate(input) {
     doc = diameter * 0.1 * lerp(0.7, 1.2, agg);
   } else if (op.docMode === "hem") {
     // High-Efficiency Machining / adaptive toolpaths: light radial engagement,
-    // deep axial passes. For CAM-driven adaptive paths (e.g. HSMWorks) the radial
-    // load is held constant by the toolpath, so honor the user's set values.
-    woc = (radialLoad && radialLoad > 0) ? radialLoad : diameter * op.wocFactor * lerp(0.8, 1.1, agg);
-    doc = (axialDoc && axialDoc > 0) ? axialDoc : diameter * 2.0 * lerp(0.7, 1.2, agg);
-    if (loc) doc = Math.min(doc, loc);
+    // deep axial passes.
+    woc = diameter * op.wocFactor * lerp(0.8, 1.1, agg);
+    doc = diameter * 2.0 * lerp(0.7, 1.2, agg);
   } else {
     woc = diameter * op.wocFactor * lerp(0.8, 1.1, agg);
     doc = diameter * mat.profileDepthFactor * tt.docMult * lerp(0.6, 1.0, agg);
-    if (loc) doc = Math.min(doc, loc);
+  }
+  // CAM-driven paths (HSMWorks adaptive / 2D rough / finish / pencil / rest) hold a
+  // set radial engagement; honor the user's set radial load and axial step-down.
+  if (op.adaptive) {
+    if (radialLoad && radialLoad > 0) woc = radialLoad;
+    if (axialDoc && axialDoc > 0) doc = axialDoc;
+  }
+  if (loc && (op.docMode === "profile" || op.docMode === "hem")) {
+    doc = Math.min(doc, loc);
   }
 
   // --- Feed multipliers from tool geometry ---
@@ -87,7 +93,7 @@ export function calculate(input) {
     thinningNotes.push(`Lead-angle chip thinning (${la}°) applied — feed raised to hold chip thickness.`);
   }
   // Radial chip thinning for partial-width face/roughing cuts.
-  if ((tt.id === "face_mill" || tt.id === "roughing" || op.docMode === "hem") && woc > 0 && woc < diameter * 0.5) {
+  if (op.adaptive && woc > 0 && woc < diameter * 0.5) {
     feedMult *= 1 / Math.sqrt(woc / diameter);
     thinningNotes.push("Radial chip thinning applied — feed increased to maintain chip thickness.");
   }
