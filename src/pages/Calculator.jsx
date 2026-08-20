@@ -47,7 +47,7 @@ export default function Calculator() {
   const [saveName, setSaveName] = useState("");
   const [saving, setSaving] = useState(false);
   const [override, setOverride] = useState(null);
-  const [adaptive, setAdaptive] = useState({ radialLoad: 0, axialDoc: 0 });
+  const [adaptive, setAdaptive] = useState({ radialLoad: 0, axialDoc: 0, featureDepth: 0 });
 
   // Load preferences, custom materials, and machine profiles on mount.
   useEffect(() => {
@@ -103,7 +103,7 @@ export default function Calculator() {
       toolTypeId: tool.toolTypeId, material: selectedMaterial, operationId, aggressiveness, machine, override,
       leadAngle: tool.leadAngle, cornerRadius: tool.cornerRadius, includedAngle: tool.includedAngle,
       tipDiameter: tool.tipDiameter, thickness: tool.thickness, neckDiameter: tool.neckDiameter, pointAngle: tool.pointAngle,
-      radialLoad: adaptive.radialLoad, axialDoc: adaptive.axialDoc,
+      radialLoad: adaptive.radialLoad, axialDoc: adaptive.axialDoc, featureDepth: adaptive.featureDepth,
     });
   }, [tool, selectedMaterial, operationId, aggressiveness, machine, override, adaptive]);
 
@@ -143,18 +143,24 @@ export default function Calculator() {
               onChange={(v) => { if (v.materialId) setMaterialId(v.materialId); if (v.operationId) setOperationId(v.operationId); }}
             />
           </Section>
-          {selectedOp?.adaptive && (
+          {operationId !== "drilling" && (
             <Section icon={Sliders} title="Path Engagement">
-              <p className="text-[11px] text-muted-foreground mb-3">{selectedOp.name} holds a set radial engagement in CAM (HSMWorks). Enter the radial load and axial step-down from your toolpath to match the actual cut; leave blank to auto-calculate.</p>
+              <p className="text-[11px] text-muted-foreground mb-3">Enter the feature depth and (for paths that hold a set radial engagement) the radial load and axial step-down from your CAM. Leave blank to auto-calculate.</p>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                  <Label className="text-xs text-muted-foreground">Radial Load ({UNITS[units].length})</Label>
-                  <NumberField className="h-9" allowClear placeholder="Auto" value={adaptive.radialLoad || undefined} onValueChange={(n) => setAdaptive((a) => ({ ...a, radialLoad: n || 0 }))} />
+                  <Label className="text-xs text-muted-foreground">Feature Depth ({UNITS[units].length})</Label>
+                  <NumberField className="h-9" allowClear placeholder="Auto" value={adaptive.featureDepth || undefined} onValueChange={(n) => setAdaptive((a) => ({ ...a, featureDepth: n || 0 }))} />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs text-muted-foreground">Axial DOC ({UNITS[units].length})</Label>
+                  <Label className="text-xs text-muted-foreground">Axial DOC / pass ({UNITS[units].length})</Label>
                   <NumberField className="h-9" allowClear placeholder="Auto" value={adaptive.axialDoc || undefined} onValueChange={(n) => setAdaptive((a) => ({ ...a, axialDoc: n || 0 }))} />
                 </div>
+                {selectedOp?.adaptive && (
+                  <div className="space-y-1.5 col-span-2">
+                    <Label className="text-xs text-muted-foreground">Radial Load ({UNITS[units].length})</Label>
+                    <NumberField className="h-9" allowClear placeholder="Auto" value={adaptive.radialLoad || undefined} onValueChange={(n) => setAdaptive((a) => ({ ...a, radialLoad: n || 0 }))} />
+                  </div>
+                )}
               </div>
             </Section>
           )}

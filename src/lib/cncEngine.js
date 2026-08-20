@@ -13,7 +13,7 @@ export function calculate(input) {
     diameter, flutes, loc, toolMaterialId, coatingId, toolTypeId,
     material, materialId, operationId, aggressiveness = 0.6, machine, override,
     leadAngle, cornerRadius, includedAngle, tipDiameter, thickness, neckDiameter, pointAngle,
-    radialLoad, axialDoc,
+    radialLoad, axialDoc, featureDepth,
   } = input;
 
   const mat = material || PART_MATERIALS.find((m) => m.id === materialId) || PART_MATERIALS[0];
@@ -73,14 +73,17 @@ export function calculate(input) {
     woc = diameter * op.wocFactor * lerp(0.8, 1.1, agg);
     doc = diameter * mat.profileDepthFactor * tt.docMult * lerp(0.6, 1.0, agg);
   }
-  // CAM-driven paths (HSMWorks adaptive / 2D rough / finish / pencil / rest) hold a
-  // set radial engagement; honor the user's set radial load and axial step-down.
-  if (op.adaptive) {
-    if (radialLoad && radialLoad > 0) woc = radialLoad;
-    if (axialDoc && axialDoc > 0) doc = axialDoc;
-  }
-  if (loc && (op.docMode === "profile" || op.docMode === "hem")) {
-    doc = Math.min(doc, loc);
+  // CAM-driven paths (HSMWorks 2D & 3D adaptive / rough / finish) hold a set radial
+  // engagement; honor the user's set radial load and axial step-down. Axial DOC is
+  // NOT capped to flute LOC — the toolpath steps down in multiple Z-passes.
+  if (op.adaptive && radialLoad && radialLoad > 0) woc = radialLoad;
+  if (op.docMode !== "drill" && !tt.isDrill && axialDoc && axialDoc > 0) doc = axialDoc;
+
+  // Feature depth → number of axial passes and the actual per-pass stepdown.
+  let passes = null, stepdown = null;
+  if (featureDepth && featureDepth > 0 && doc > 0) {
+    passes = Math.max(1, Math.ceil(featureDepth / doc));
+    stepdown = featureDepth / passes;
   }
 
   // --- Feed multipliers from tool geometry ---
@@ -118,6 +121,7 @@ export function calculate(input) {
   if (hpRequired > m.hp) warnings.push(`Requires ~${hpRequired.toFixed(1)} HP but machine has ${m.hp} HP — reduce DOC/WOC or feed.`);
   if (rpmClamped) warnings.push(rpm > rpmIdeal ? `Spindle minimum forced RPM above ideal — reduce SFM or use smaller tool.` : `Spindle max RPM reached — ideal ${Math.round(rpmIdeal)} RPM. Increase SFM or use larger diameter.`);
   if (ipmClamped) warnings.push(`Machine max feed (${m.maxIpm} IPM) limits the programmed feed.`);
+  if (loc && (op.docMode === "profile" || op.docMode === "hem") && doc > loc) warnings.push(`Per-pass axial DOC (${doc.toFixed(3)}") exceeds flute LOC (${loc}") — confirm chip evacuation.`);
   if (op.docMode === "slot" && diameter >= 0.5 && flutes >= 4) warnings.push("Slotting with 4+ flutes at this diameter risks chip packing — consider 2-3 flutes or air blast.");
   if (tt.id === "bull_nose" && cornerRadius && op.docMode === "slot" && doc > cornerRadius * 2) warnings.push("Bull-nose full-width slotting deeper than the corner radius — chip evacuation at the radius is tight; peck or reduce DOC.");
   if (mat.category === "Stainless" || mat.category === "Titanium" || mat.category === "Superalloy") warnings.push("Work hardening / heat-sensitive alloy — keep chip load up, avoid rubbing, use coolant or air.");
@@ -134,6 +138,8 @@ export function calculate(input) {
     hpRequired: Number(hpRequired.toFixed(2)),
     hpAvailable: m.hp,
     hpUtilization: Math.min(100, Math.round((hpRequired / m.hp) * 100)),
+    passes,
+    stepdown,
     warnings,
   };
 }

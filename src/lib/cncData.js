@@ -149,6 +149,11 @@ export const OPERATIONS = [
   { id: "hem_rough", name: "Adaptive Roughing", sfmMult: 1.0, chipMult: 1.1, feedMult: 1.0, wocFactor: 0.08, docMode: "hem", adaptive: true },
   { id: "hem_finish", name: "Adaptive Finishing", sfmMult: 1.1, chipMult: 0.8, feedMult: 1.0, wocFactor: 0.05, docMode: "hem", adaptive: true },
   { id: "rest_rough", name: "Rest Roughing", sfmMult: 0.95, chipMult: 1.0, feedMult: 1.0, wocFactor: 0.1, docMode: "hem", adaptive: true },
+  { id: "3d_rough", name: "3D Rough (Z-Level)", sfmMult: 1.0, chipMult: 1.0, feedMult: 1.0, wocFactor: 0.1, docMode: "hem", adaptive: true },
+  { id: "3d_pocket", name: "3D Pocket", sfmMult: 0.95, chipMult: 1.0, feedMult: 1.0, wocFactor: 0.12, docMode: "hem", adaptive: true },
+  { id: "3d_finish", name: "3D Finish (Scallop)", sfmMult: 1.1, chipMult: 0.7, feedMult: 1.0, wocFactor: 0.06, docMode: "profile", adaptive: true },
+  { id: "z_level", name: "Z-Level Finish", sfmMult: 1.05, chipMult: 0.7, feedMult: 1.0, wocFactor: 0.08, docMode: "profile", adaptive: true },
+  { id: "3d_parallel", name: "3D Parallel", sfmMult: 1.1, chipMult: 0.7, feedMult: 1.0, wocFactor: 0.06, docMode: "profile", adaptive: true },
   { id: "facing", name: "Face", sfmMult: 0.95, chipMult: 1.0, feedMult: 1.0, wocFactor: 1.0, docMode: "face", adaptive: false },
   { id: "drilling", name: "Drill", sfmMult: 0.8, chipMult: 1.0, feedMult: 1.0, wocFactor: 1.0, docMode: "drill", adaptive: false },
 ];

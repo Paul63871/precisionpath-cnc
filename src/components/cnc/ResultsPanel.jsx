@@ -40,6 +40,11 @@ export default function ResultsPanel({ result, units = "imperial" }) {
         <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
           <span>Material Removal Rate</span><span className="font-mono">{fmt(mrrFromImp(result.mrr, units), 1)} {u.mrr}</span>
         </div>
+        {result.passes != null && (
+          <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
+            <span>Axial Passes</span><span className="font-mono">{result.passes} × {fmt(lenFromImp(result.stepdown, units), 3)} {u.length}/pass</span>
+          </div>
+        )}
         <div className="mt-2">
           <div className="flex items-center justify-between text-xs mb-1">
             <span className="text-muted-foreground">Power Utilization</span>
