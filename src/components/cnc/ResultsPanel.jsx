@@ -29,10 +29,15 @@ export default function ResultsPanel({ result, units = "imperial" }) {
         <Metric icon={Gauge} label="Spindle Speed" value={result.rpm.toLocaleString()} unit="RPM" accent="text-amber-600" />
         <Metric icon={Activity} label="Feed Rate" value={feedFromImp(result.ipm, units).toLocaleString(undefined, { maximumFractionDigits: 1 })} unit={u.feed} accent="text-amber-600" />
         <Metric icon={Layers} label="Axial DOC" value={fmt(lenFromImp(result.doc, units), 2)} unit={u.length} />
-        <Metric icon={Ruler} label="Radial WOC" value={fmt(lenFromImp(result.woc, units), 2)} unit={u.length} />
+        <Metric icon={Ruler} label="Radial WOC" value={fmt(lenFromImp(result.woc, units), 3)} unit={u.length} />
         <Metric icon={TrendingUp} label="Chip Load" value={fmt(lenFromImp(result.chipLoad, units), 4)} unit={`${u.length}/tooth`} />
         <Metric icon={Zap} label="Power" value={fmt(power, 2)} unit={`/ ${fmt(powerAvail, 1)} ${u.power}`} accent={hpColor} />
       </div>
+      {result.adaptive && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+          The <span className="font-medium">Radial WOC</span> above is your <span className="font-medium">Optimal Load</span> (max stepover) — enter it in HSMWorks → Passes → Optimal Load.
+        </div>
+      )}
       <div className="rounded-lg border border-border bg-card px-4 py-3">
         <div className="flex items-center justify-between text-xs text-muted-foreground">
           <span>Surface Speed</span><span className="font-mono">{fmt(surfaceFromImp(result.sfm, units), 1)} {u.surface}</span>

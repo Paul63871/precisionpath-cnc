@@ -145,6 +145,7 @@ export function calculate(input) {
     stepdown,
     radialThinningFactor: Number(radialThinningFactor.toFixed(2)),
     radialEngagementPct: diameter > 0 ? Math.round((woc / diameter) * 100) : 0,
+    adaptive: !!op.adaptive,
     warnings,
   };
 }
