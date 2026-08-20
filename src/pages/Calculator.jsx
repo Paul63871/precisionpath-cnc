@@ -42,6 +42,7 @@ export default function Calculator() {
   const [saveOpen, setSaveOpen] = useState(false);
   const [saveName, setSaveName] = useState("");
   const [saving, setSaving] = useState(false);
+  const [override, setOverride] = useState(null);
 
   // Load preferences, custom materials, and machine profiles on mount.
   useEffect(() => {
@@ -91,7 +92,7 @@ export default function Calculator() {
     return calculate({
       diameter: tool.diameter, flutes: tool.flutes, loc: tool.loc,
       toolMaterialId: tool.toolMaterialId, coatingId: tool.coatingId,
-      toolTypeId: tool.toolTypeId, material: selectedMaterial, operationId, aggressiveness, machine,
+      toolTypeId: tool.toolTypeId, material: selectedMaterial, operationId, aggressiveness, machine, override,
     });
   }, [tool, selectedMaterial, operationId, aggressiveness, machine]);
 
@@ -137,7 +138,7 @@ export default function Calculator() {
             />
           </Section>
           <Section icon={Sparkles} title="Brand / Model Lookup (optional)">
-            <BrandLookup materialName={selectedMaterial.name} onApply={() => {}} />
+            <BrandLookup materialName={selectedMaterial.name} onApply={(v) => setOverride(v)} />
           </Section>
         </div>
         <div className="lg:col-span-2">
@@ -162,6 +163,12 @@ export default function Calculator() {
                 </Button>
               )}
             >
+              {override && (
+                <div className="mb-3 flex items-center justify-between gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+                  <span>Using manufacturer values: {override.sfm} SFM · {override.chipLoad}"/tooth</span>
+                  <button onClick={() => setOverride(null)} className="font-medium underline whitespace-nowrap">Clear</button>
+                </div>
+              )}
               {result ? <ResultsPanel result={result} units={units} /> : <p className="text-sm text-muted-foreground">Enter a valid tool diameter to see results.</p>}
             </Section>
           </div>

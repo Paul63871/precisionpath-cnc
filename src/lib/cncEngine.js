@@ -10,7 +10,7 @@ import {
 export function calculate(input) {
   const {
     diameter, flutes, loc, toolMaterialId, coatingId, toolTypeId,
-    material, materialId, operationId, aggressiveness = 0.6, machine,
+    material, materialId, operationId, aggressiveness = 0.6, machine, override,
   } = input;
 
   const mat = material || PART_MATERIALS.find((m) => m.id === materialId) || PART_MATERIALS[0];
@@ -23,8 +23,15 @@ export function calculate(input) {
   const agg = clamp(aggressiveness, 0, 1);
 
   // --- Surface speed (SFM) ---
-  const [sfmMin, sfmMax] = mat.sfmRange;
-  let sfm = lerp(sfmMin, sfmMax, agg) * tm.sfmMult * coat.sfmMult * op.sfmMult * tt.sfmMult;
+  let sfm;
+  if (override?.sfm) {
+    // Manufacturer-recommended SFM already reflects the tool's material/coating;
+    // only the operation (slotting vs finishing) still adjusts it.
+    sfm = override.sfm * op.sfmMult;
+  } else {
+    const [sfmMin, sfmMax] = mat.sfmRange;
+    sfm = lerp(sfmMin, sfmMax, agg) * tm.sfmMult * coat.sfmMult * op.sfmMult * tt.sfmMult;
+  }
 
   // --- RPM ---
   let rpm = (sfm * 3.82) / diameter;
@@ -33,9 +40,14 @@ export function calculate(input) {
   const rpmClamped = Math.abs(rpm - rpmIdeal) > 0.5;
 
   // --- Chip load per tooth ---
-  let chipLoad = baseChipLoad(diameter) * mat.chipLoadFactor * op.chipMult * tt.chipMult;
-  // aggressiveness scales chip load modestly (conservative end stays light)
-  chipLoad *= lerp(0.75, 1.05, agg);
+  let chipLoad;
+  if (override?.chipLoad) {
+    chipLoad = override.chipLoad * op.chipMult * lerp(0.8, 1.0, agg);
+  } else {
+    chipLoad = baseChipLoad(diameter) * mat.chipLoadFactor * op.chipMult * tt.chipMult;
+    // aggressiveness scales chip load modestly (conservative end stays light)
+    chipLoad *= lerp(0.75, 1.05, agg);
+  }
 
   // --- Feed (IPM) ---
   let ipm;
