@@ -1,0 +1,122 @@
+import React, { useState } from "react";
+import { Plus, Pencil, Trash2 } from "lucide-react";
+import { useEntityList } from "@/lib/useEntityList";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
+
+const EMPTY = {
+  name: "", category: "Custom", sfm_min: 200, sfm_max: 600,
+  chip_load_factor: 0.7, hp_factor: 0.5, slot_depth_factor: 0.7, profile_depth_factor: 2.0,
+};
+
+function MaterialDialog({ initial, onSave, trigger }) {
+  const [open, setOpen] = useState(false);
+  const [form, setForm] = useState(initial || EMPTY);
+  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  const submit = async () => {
+    await onSave(form);
+    setOpen(false);
+    setForm(initial || EMPTY);
+  };
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>{trigger}</DialogTrigger>
+      <DialogContent className="max-w-md">
+        <DialogHeader><DialogTitle>{initial ? "Edit Material" : "New Material"}</DialogTitle></DialogHeader>
+        <div className="grid grid-cols-2 gap-3 py-2">
+          <div className="space-y-1.5 col-span-2">
+            <Label className="text-xs text-muted-foreground">Name</Label>
+            <Input value={form.name} onChange={(e) => set("name", e.target.value)} className="h-9" />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Category</Label>
+            <Input value={form.category} onChange={(e) => set("category", e.target.value)} className="h-9" />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">HP factor</Label>
+            <Input type="number" step="0.01" value={form.hp_factor} onChange={(e) => set("hp_factor", parseFloat(e.target.value))} className="h-9" />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">SFM min</Label>
+            <Input type="number" value={form.sfm_min} onChange={(e) => set("sfm_min", parseFloat(e.target.value))} className="h-9" />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">SFM max</Label>
+            <Input type="number" value={form.sfm_max} onChange={(e) => set("sfm_max", parseFloat(e.target.value))} className="h-9" />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Chip load factor</Label>
+            <Input type="number" step="0.01" value={form.chip_load_factor} onChange={(e) => set("chip_load_factor", parseFloat(e.target.value))} className="h-9" />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Slot depth factor</Label>
+            <Input type="number" step="0.01" value={form.slot_depth_factor} onChange={(e) => set("slot_depth_factor", parseFloat(e.target.value))} className="h-9" />
+          </div>
+          <div className="space-y-1.5 col-span-2">
+            <Label className="text-xs text-muted-foreground">Profile depth factor</Label>
+            <Input type="number" step="0.01" value={form.profile_depth_factor} onChange={(e) => set("profile_depth_factor", parseFloat(e.target.value))} className="h-9" />
+          </div>
+        </div>
+        <DialogFooter><Button onClick={submit} disabled={!form.name}>Save</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+export default function Materials() {
+  const { items, loading, create, update, remove } = useEntityList("CustomMaterial");
+  return (
+    <div className="mx-auto max-w-5xl px-4 py-8">
+      <div className="mb-6 flex items-center justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight">Material Library</h1>
+          <p className="text-xs text-muted-foreground">Define custom materials to refine calculation accuracy.</p>
+        </div>
+        <MaterialDialog onSave={create} trigger={<Button size="sm" className="h-9"><Plus className="w-4 h-4 mr-1.5" />Add</Button>} />
+      </div>
+      {loading ? (
+        <div className="text-sm text-muted-foreground">Loading…</div>
+      ) : items.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-border p-10 text-center text-sm text-muted-foreground">
+          No custom materials yet. Add one to use it in the calculator.
+        </div>
+      ) : (
+        <div className="rounded-xl border border-border overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-muted text-xs text-muted-foreground">
+              <tr>
+                <th className="text-left px-3 py-2 font-medium">Name</th>
+                <th className="text-left px-3 py-2 font-medium">Category</th>
+                <th className="text-left px-3 py-2 font-medium">SFM</th>
+                <th className="text-left px-3 py-2 font-medium">Chip</th>
+                <th className="text-left px-3 py-2 font-medium">HP</th>
+                <th className="text-left px-3 py-2 font-medium">Depth</th>
+                <th className="px-3 py-2"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((m) => (
+                <tr key={m.id} className="border-t border-border">
+                  <td className="px-3 py-2 font-medium">{m.name}</td>
+                  <td className="px-3 py-2 text-muted-foreground">{m.category}</td>
+                  <td className="px-3 py-2 font-mono">{m.sfm_min}–{m.sfm_max}</td>
+                  <td className="px-3 py-2 font-mono">{m.chip_load_factor}</td>
+                  <td className="px-3 py-2 font-mono">{m.hp_factor}</td>
+                  <td className="px-3 py-2 font-mono">{m.slot_depth_factor}/{m.profile_depth_factor}</td>
+                  <td className="px-3 py-2 text-right">
+                    <div className="flex justify-end gap-1">
+                      <MaterialDialog initial={m} onSave={(f) => update(m.id, f)} trigger={<Button size="sm" variant="ghost" className="h-8 w-8 p-0"><Pencil className="w-3.5 h-3.5" /></Button>} />
+                      <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => remove(m.id)}><Trash2 className="w-3.5 h-3.5" /></Button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}

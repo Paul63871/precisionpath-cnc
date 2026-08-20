@@ -8,6 +8,11 @@ import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import ScrollToTop from './components/ScrollToTop';
 // Add page imports here
 import Calculator from './pages/Calculator';
+import SavedCalculations from './pages/SavedCalculations';
+import Materials from './pages/Materials';
+import MachineProfiles from './pages/MachineProfiles';
+import Settings from './pages/Settings';
+import Layout from './components/Layout';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -36,7 +41,13 @@ const AuthenticatedApp = () => {
   return (
     <Routes>
       {/* Add your page Route elements here */}
-      <Route path="/" element={<Calculator />} />
+      <Route element={<Layout />}>
+        <Route path="/" element={<Calculator />} />
+        <Route path="/saved-calculations" element={<SavedCalculations />} />
+        <Route path="/materials" element={<Materials />} />
+        <Route path="/machine-profiles" element={<MachineProfiles />} />
+        <Route path="/settings" element={<Settings />} />
+      </Route>
       <Route path="*" element={<PageNotFound />} />
     </Routes>
   );

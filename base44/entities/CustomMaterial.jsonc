@@ -1,0 +1,47 @@
+{
+  "name": "CustomMaterial",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "category": {
+      "type": "string"
+    },
+    "sfm_min": {
+      "type": "number"
+    },
+    "sfm_max": {
+      "type": "number"
+    },
+    "chip_load_factor": {
+      "type": "number"
+    },
+    "hp_factor": {
+      "type": "number"
+    },
+    "slot_depth_factor": {
+      "type": "number"
+    },
+    "profile_depth_factor": {
+      "type": "number"
+    }
+  },
+  "required": [
+    "name"
+  ],
+  "rls": {
+    "read": {
+      "created_by_id": "{{user.id}}"
+    },
+    "create": {
+      "created_by_id": "{{user.id}}"
+    },
+    "update": {
+      "created_by_id": "{{user.id}}"
+    },
+    "delete": {
+      "created_by_id": "{{user.id}}"
+    }
+  }
+}

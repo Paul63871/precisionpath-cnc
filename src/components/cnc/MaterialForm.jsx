@@ -1,18 +1,14 @@
 import React, { useMemo } from "react";
 import { Label } from "@/components/ui/label";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
-import { PART_MATERIALS, OPERATIONS } from "@/lib/cncData";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { OPERATIONS } from "@/lib/cncData";
 
-export default function MaterialForm({ materialId, operationId, onChange }) {
+export default function MaterialForm({ materials, materialId, operationId, onChange }) {
   const categories = useMemo(() => {
     const map = {};
-    PART_MATERIALS.forEach((m) => {
-      (map[m.category] = map[m.category] || []).push(m);
-    });
+    materials.forEach((m) => { (map[m.category] = map[m.category] || []).push(m); });
     return map;
-  }, []);
+  }, [materials]);
 
   return (
     <div className="space-y-4">
@@ -25,7 +21,7 @@ export default function MaterialForm({ materialId, operationId, onChange }) {
               <div key={cat}>
                 <div className="px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{cat}</div>
                 {mats.map((m) => (
-                  <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+                  <SelectItem key={m.id} value={m.id}>{m.name}{m.custom ? " ✓" : ""}</SelectItem>
                 ))}
               </div>
             ))}
@@ -36,11 +32,7 @@ export default function MaterialForm({ materialId, operationId, onChange }) {
         <Label className="text-xs text-muted-foreground">Operation</Label>
         <Select value={operationId} onValueChange={(v) => onChange({ operationId: v })}>
           <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            {OPERATIONS.map((o) => (
-              <SelectItem key={o.id} value={o.id}>{o.name}</SelectItem>
-            ))}
-          </SelectContent>
+          <SelectContent>{OPERATIONS.map((o) => <SelectItem key={o.id} value={o.id}>{o.name}</SelectItem>)}</SelectContent>
         </Select>
       </div>
     </div>

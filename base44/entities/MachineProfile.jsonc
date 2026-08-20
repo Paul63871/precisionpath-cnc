@@ -1,0 +1,41 @@
+{
+  "name": "MachineProfile",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "hp": {
+      "type": "number"
+    },
+    "max_rpm": {
+      "type": "number"
+    },
+    "min_rpm": {
+      "type": "number"
+    },
+    "max_ipm": {
+      "type": "number"
+    },
+    "notes": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "name"
+  ],
+  "rls": {
+    "read": {
+      "created_by_id": "{{user.id}}"
+    },
+    "create": {
+      "created_by_id": "{{user.id}}"
+    },
+    "update": {
+      "created_by_id": "{{user.id}}"
+    },
+    "delete": {
+      "created_by_id": "{{user.id}}"
+    }
+  }
+}

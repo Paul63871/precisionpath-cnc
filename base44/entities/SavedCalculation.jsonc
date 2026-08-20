@@ -1,0 +1,86 @@
+{
+  "name": "SavedCalculation",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "tool_type_id": {
+      "type": "string"
+    },
+    "tool_material_id": {
+      "type": "string"
+    },
+    "coating_id": {
+      "type": "string"
+    },
+    "diameter": {
+      "type": "number"
+    },
+    "flutes": {
+      "type": "number"
+    },
+    "loc": {
+      "type": "number"
+    },
+    "material_id": {
+      "type": "string"
+    },
+    "operation_id": {
+      "type": "string"
+    },
+    "machine_hp": {
+      "type": "number"
+    },
+    "machine_max_rpm": {
+      "type": "number"
+    },
+    "machine_min_rpm": {
+      "type": "number"
+    },
+    "machine_max_ipm": {
+      "type": "number"
+    },
+    "aggressiveness": {
+      "type": "number"
+    },
+    "result_rpm": {
+      "type": "number"
+    },
+    "result_ipm": {
+      "type": "number"
+    },
+    "result_doc": {
+      "type": "number"
+    },
+    "result_woc": {
+      "type": "number"
+    },
+    "result_chip_load": {
+      "type": "number"
+    },
+    "result_mrr": {
+      "type": "number"
+    },
+    "result_hp": {
+      "type": "number"
+    }
+  },
+  "required": [
+    "name"
+  ],
+  "rls": {
+    "read": {
+      "created_by_id": "{{user.id}}"
+    },
+    "create": {
+      "created_by_id": "{{user.id}}"
+    },
+    "update": {
+      "created_by_id": "{{user.id}}"
+    },
+    "delete": {
+      "created_by_id": "{{user.id}}"
+    }
+  }
+}

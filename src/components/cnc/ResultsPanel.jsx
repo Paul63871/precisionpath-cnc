@@ -1,5 +1,6 @@
 import React from "react";
 import { AlertTriangle, Gauge, Activity, Layers, Ruler, Zap, TrendingUp } from "lucide-react";
+import { UNITS, lenFromImp, feedFromImp, surfaceFromImp, powerFromImp, mrrFromImp } from "@/lib/units";
 
 function Metric({ icon: Icon, label, value, unit, accent }) {
   return (
@@ -9,38 +10,35 @@ function Metric({ icon: Icon, label, value, unit, accent }) {
         <span className="text-[11px] uppercase tracking-wide">{label}</span>
       </div>
       <div className={`mt-1 font-mono text-2xl tabular-nums ${accent || "text-foreground"}`}>
-        {value}
-        <span className="ml-1 text-sm text-muted-foreground font-sans">{unit}</span>
+        {value}<span className="ml-1 text-sm text-muted-foreground font-sans">{unit}</span>
       </div>
     </div>
   );
 }
 
-export default function ResultsPanel({ result }) {
+export default function ResultsPanel({ result, units = "imperial" }) {
   if (!result) return null;
-  const hpColor = result.hpUtilization > 100
-    ? "text-destructive"
-    : result.hpUtilization > 85 ? "text-amber-500" : "text-emerald-600";
-
+  const u = UNITS[units];
+  const fmt = (v, d = 2) => Number(v).toFixed(d);
+  const hpColor = result.hpUtilization > 100 ? "text-destructive" : result.hpUtilization > 85 ? "text-amber-500" : "text-emerald-600";
+  const power = powerFromImp(result.hpRequired, units);
+  const powerAvail = powerFromImp(result.hpAvailable, units);
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-2 gap-3">
         <Metric icon={Gauge} label="Spindle Speed" value={result.rpm.toLocaleString()} unit="RPM" accent="text-amber-600" />
-        <Metric icon={Activity} label="Feed Rate" value={result.ipm.toLocaleString()} unit="IPM" accent="text-amber-600" />
-        <Metric icon={Layers} label="Axial DOC" value={result.doc} unit="in" />
-        <Metric icon={Ruler} label="Radial WOC" value={result.woc} unit="in" />
-        <Metric icon={TrendingUp} label="Chip Load" value={result.chipLoad} unit="in/tooth" />
-        <Metric icon={Zap} label="Power" value={`${result.hpRequired}`} unit={`/ ${result.hpAvailable} HP`} accent={hpColor} />
+        <Metric icon={Activity} label="Feed Rate" value={feedFromImp(result.ipm, units).toLocaleString(undefined, { maximumFractionDigits: 1 })} unit={u.feed} accent="text-amber-600" />
+        <Metric icon={Layers} label="Axial DOC" value={fmt(lenFromImp(result.doc, units), 2)} unit={u.length} />
+        <Metric icon={Ruler} label="Radial WOC" value={fmt(lenFromImp(result.woc, units), 2)} unit={u.length} />
+        <Metric icon={TrendingUp} label="Chip Load" value={fmt(lenFromImp(result.chipLoad, units), 4)} unit={`${u.length}/tooth`} />
+        <Metric icon={Zap} label="Power" value={fmt(power, 2)} unit={`/ ${fmt(powerAvail, 1)} ${u.power}`} accent={hpColor} />
       </div>
-
       <div className="rounded-lg border border-border bg-card px-4 py-3">
         <div className="flex items-center justify-between text-xs text-muted-foreground">
-          <span>Surface Speed</span>
-          <span className="font-mono">{result.sfm} SFM</span>
+          <span>Surface Speed</span><span className="font-mono">{fmt(surfaceFromImp(result.sfm, units), 1)} {u.surface}</span>
         </div>
         <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
-          <span>Material Removal Rate</span>
-          <span className="font-mono">{result.mrr} in³/min</span>
+          <span>Material Removal Rate</span><span className="font-mono">{fmt(mrrFromImp(result.mrr, units), 1)} {u.mrr}</span>
         </div>
         <div className="mt-2">
           <div className="flex items-center justify-between text-xs mb-1">
@@ -55,7 +53,6 @@ export default function ResultsPanel({ result }) {
           </div>
         </div>
       </div>
-
       {result.warnings.length > 0 && (
         <div className="space-y-2">
           {result.warnings.map((w, i) => (

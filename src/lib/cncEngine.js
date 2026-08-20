@@ -10,10 +10,10 @@ import {
 export function calculate(input) {
   const {
     diameter, flutes, loc, toolMaterialId, coatingId, toolTypeId,
-    materialId, operationId, aggressiveness = 0.6, machine,
+    material, materialId, operationId, aggressiveness = 0.6, machine,
   } = input;
 
-  const mat = PART_MATERIALS.find((m) => m.id === materialId) || PART_MATERIALS[0];
+  const mat = material || PART_MATERIALS.find((m) => m.id === materialId) || PART_MATERIALS[0];
   const tm = TOOL_MATERIALS.find((t) => t.id === toolMaterialId) || TOOL_MATERIALS[0];
   const coat = COATINGS.find((c) => c.id === coatingId) || COATINGS[0];
   const tt = TOOL_TYPES.find((t) => t.id === toolTypeId) || TOOL_TYPES[0];
