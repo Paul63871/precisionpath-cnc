@@ -142,20 +142,30 @@ export const FIELD_DEFS = {
 
 // Operation presets. wocFactor and docFactor are multipliers of tool diameter.
 export const OPERATIONS = [
-  { id: "slotting", name: "Slot (Full Cut)", sfmMult: 0.9, chipMult: 1.0, feedMult: 1.0, wocFactor: 1.0, docMode: "slot", adaptive: false },
-  { id: "roughing", name: "2D Rough", sfmMult: 1.0, chipMult: 1.0, feedMult: 1.0, wocFactor: 0.25, docMode: "profile", adaptive: true },
-  { id: "finishing", name: "2D Finish", sfmMult: 1.1, chipMult: 0.7, feedMult: 1.0, wocFactor: 0.08, docMode: "profile", adaptive: true },
-  { id: "pencil", name: "Pencil", sfmMult: 1.1, chipMult: 0.6, feedMult: 1.0, wocFactor: 0.05, docMode: "profile", adaptive: true },
-  { id: "hem_rough", name: "Adaptive Roughing", sfmMult: 1.0, chipMult: 1.1, feedMult: 1.0, wocFactor: 0.08, docMode: "hem", adaptive: true },
-  { id: "hem_finish", name: "Adaptive Finishing", sfmMult: 1.1, chipMult: 0.8, feedMult: 1.0, wocFactor: 0.05, docMode: "hem", adaptive: true },
-  { id: "rest_rough", name: "Rest Roughing", sfmMult: 0.95, chipMult: 1.0, feedMult: 1.0, wocFactor: 0.1, docMode: "hem", adaptive: true },
-  { id: "3d_rough", name: "3D Rough (Z-Level)", sfmMult: 1.0, chipMult: 1.0, feedMult: 1.0, wocFactor: 0.1, docMode: "hem", adaptive: true },
-  { id: "3d_pocket", name: "3D Pocket", sfmMult: 0.95, chipMult: 1.0, feedMult: 1.0, wocFactor: 0.12, docMode: "hem", adaptive: true },
-  { id: "3d_finish", name: "3D Finish (Scallop)", sfmMult: 1.1, chipMult: 0.7, feedMult: 1.0, wocFactor: 0.06, docMode: "profile", adaptive: true },
-  { id: "z_level", name: "Z-Level Finish", sfmMult: 1.05, chipMult: 0.7, feedMult: 1.0, wocFactor: 0.08, docMode: "profile", adaptive: true },
-  { id: "3d_parallel", name: "3D Parallel", sfmMult: 1.1, chipMult: 0.7, feedMult: 1.0, wocFactor: 0.06, docMode: "profile", adaptive: true },
-  { id: "facing", name: "Face", sfmMult: 0.95, chipMult: 1.0, feedMult: 1.0, wocFactor: 1.0, docMode: "face", adaptive: false },
-  { id: "drilling", name: "Drill", sfmMult: 0.8, chipMult: 1.0, feedMult: 1.0, wocFactor: 1.0, docMode: "drill", adaptive: false },
+  // 2D / 2.5-Axis
+  { id: "2d_adaptive_rough", name: "2D Adaptive Clearing (Rough)", category: "2D", sfmMult: 1.0, chipMult: 1.1, feedMult: 1.0, wocFactor: 0.08, docMode: "hem", adaptive: true },
+  { id: "2d_adaptive_finish", name: "2D Adaptive Finishing", category: "2D", sfmMult: 1.1, chipMult: 0.8, feedMult: 1.0, wocFactor: 0.05, docMode: "hem", adaptive: true },
+  { id: "2d_pocket", name: "2D Pocket", category: "2D", sfmMult: 1.0, chipMult: 1.0, feedMult: 1.0, wocFactor: 0.3, docMode: "hem", adaptive: true },
+  { id: "2d_contour", name: "2D Contour", category: "2D", sfmMult: 1.1, chipMult: 0.7, feedMult: 1.0, wocFactor: 0.08, docMode: "profile", adaptive: true },
+  { id: "facing", name: "Face", category: "2D", sfmMult: 0.95, chipMult: 1.0, feedMult: 1.0, wocFactor: 1.0, docMode: "face", adaptive: false },
+  { id: "slotting", name: "Slot", category: "2D", sfmMult: 0.9, chipMult: 1.0, feedMult: 1.0, wocFactor: 1.0, docMode: "slot", adaptive: false },
+  { id: "bore", name: "Circular / Bore", category: "2D", sfmMult: 0.9, chipMult: 1.0, feedMult: 1.0, wocFactor: 1.0, docMode: "slot", adaptive: false },
+  { id: "thread", name: "Thread Milling", category: "2D", sfmMult: 0.8, chipMult: 0.6, feedMult: 1.0, wocFactor: 0.03, docMode: "profile", adaptive: false },
+  { id: "drilling", name: "Drilling", category: "2D", sfmMult: 0.8, chipMult: 1.0, feedMult: 1.0, wocFactor: 1.0, docMode: "drill", adaptive: false },
+  { id: "engrave", name: "2D Engrave", category: "2D", sfmMult: 1.0, chipMult: 0.4, feedMult: 1.0, wocFactor: 0.02, docMode: "profile", adaptive: false },
+  // 3D / High-Speed Machining (HSM)
+  { id: "3d_adaptive_rough", name: "3D Adaptive Clearing (Rough)", category: "3D", sfmMult: 1.0, chipMult: 1.0, feedMult: 1.0, wocFactor: 0.1, docMode: "hem", adaptive: true },
+  { id: "3d_adaptive_finish", name: "3D Adaptive Finishing", category: "3D", sfmMult: 1.1, chipMult: 0.8, feedMult: 1.0, wocFactor: 0.06, docMode: "hem", adaptive: true },
+  { id: "3d_pocket", name: "Pocket / Contour (3D)", category: "3D", sfmMult: 0.95, chipMult: 1.0, feedMult: 1.0, wocFactor: 0.12, docMode: "hem", adaptive: true },
+  { id: "3d_parallel", name: "Parallel", category: "3D", sfmMult: 1.1, chipMult: 0.7, feedMult: 1.0, wocFactor: 0.06, docMode: "profile", adaptive: true },
+  { id: "3d_waterline", name: "Contour (Waterline)", category: "3D", sfmMult: 1.05, chipMult: 0.7, feedMult: 1.0, wocFactor: 0.08, docMode: "profile", adaptive: true },
+  { id: "3d_morph", name: "Morph / Blend", category: "3D", sfmMult: 1.1, chipMult: 0.7, feedMult: 1.0, wocFactor: 0.06, docMode: "profile", adaptive: true },
+  { id: "3d_project", name: "Project", category: "3D", sfmMult: 1.1, chipMult: 0.7, feedMult: 1.0, wocFactor: 0.06, docMode: "profile", adaptive: true },
+  { id: "3d_pencil", name: "Pencil / Rest Machining", category: "3D", sfmMult: 1.1, chipMult: 0.6, feedMult: 1.0, wocFactor: 0.05, docMode: "profile", adaptive: true },
+  { id: "3d_radial", name: "Radial / Spiral / Flow", category: "3D", sfmMult: 1.1, chipMult: 0.7, feedMult: 1.0, wocFactor: 0.06, docMode: "profile", adaptive: true },
+  // Multi-Axis & Special
+  { id: "3plus2", name: "3+2 Positioning (Indexed)", category: "Multi-Axis", sfmMult: 1.0, chipMult: 0.8, feedMult: 1.0, wocFactor: 0.08, docMode: "profile", adaptive: true },
+  { id: "5axis", name: "Simultaneous 5-Axis", category: "Multi-Axis", sfmMult: 1.0, chipMult: 0.8, feedMult: 1.0, wocFactor: 0.08, docMode: "profile", adaptive: true },
 ];
 
 // Base chip load per tooth (inches) for an "easy" material like aluminum,
