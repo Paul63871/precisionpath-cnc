@@ -47,7 +47,7 @@ export default function Calculator() {
   const [saveName, setSaveName] = useState("");
   const [saving, setSaving] = useState(false);
   const [override, setOverride] = useState(null);
-  const [adaptive, setAdaptive] = useState({ radialLoad: 0, axialDoc: 0, featureDepth: 0 });
+  const [adaptive, setAdaptive] = useState({ radialLoad: 0, axialDoc: 0, featureDepth: 0, fineStepup: 0 });
 
   // Load preferences, custom materials, and machine profiles on mount.
   useEffect(() => {
@@ -145,7 +145,7 @@ export default function Calculator() {
           </Section>
           {operationId !== "drilling" && (
             <Section icon={Sliders} title="Path Engagement">
-              <p className="text-[11px] text-muted-foreground mb-3">Enter the feature depth and (for paths that hold a set radial engagement) the radial load and axial step-down from your CAM. Leave blank to auto-calculate.</p>
+              <p className="text-[11px] text-muted-foreground mb-3">Enter the feature depth, Optimal Load (max radial stepover), and axial step-down from your CAM's Passes tab. Leave blank to auto-calculate. These load settings apply to both roughing and finishing adaptive paths.</p>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label className="text-xs text-muted-foreground">Feature Depth ({UNITS[units].length})</Label>
@@ -157,18 +157,33 @@ export default function Calculator() {
                 </div>
                 {selectedOp?.adaptive && (
                   <div className="space-y-1.5 col-span-2">
-                    <Label className="text-xs text-muted-foreground">Radial Load ({UNITS[units].length})</Label>
+                    <Label className="text-xs text-muted-foreground">Optimal Load — max stepover ({UNITS[units].length})</Label>
                     <NumberField className="h-9" allowClear placeholder="Auto" value={adaptive.radialLoad || undefined} onValueChange={(n) => setAdaptive((a) => ({ ...a, radialLoad: n || 0 }))} />
                     {result && (
                       <p className="text-[11px] text-muted-foreground leading-relaxed">
-                        Set HSMWorks radial engagement / max stepover to{" "}
+                        Set <span className="font-medium text-foreground">HSMWorks → Passes → Optimal Load</span> to{" "}
                         <span className="font-mono text-foreground">{lenFromImp(result.woc, units).toFixed(3)} {UNITS[units].length}</span>
                         {" "}({result.radialEngagementPct}% of Ø).
                         {result.radialThinningFactor > 1 && (
-                          <> Radial chip thinning raises feed <span className="font-mono text-amber-600">{result.radialThinningFactor}×</span> to hold chip thickness — enter this feed in the toolpath.</>
+                          <> Radial chip thinning raises feed <span className="font-mono text-amber-600">{result.radialThinningFactor}×</span> to hold chip thickness — enter that feed in the toolpath.</>
                         )}
                       </p>
                     )}
+                  </div>
+                )}
+                {selectedOp?.fineStepup && (
+                  <div className="space-y-1.5 col-span-2">
+                    <Label className="text-xs text-muted-foreground">Fine Stepup ({UNITS[units].length})</Label>
+                    <NumberField className="h-9" allowClear placeholder="Auto" value={adaptive.fineStepup || undefined} onValueChange={(n) => setAdaptive((a) => ({ ...a, fineStepup: n || 0 }))} />
+                    {result && (() => {
+                      const base = adaptive.axialDoc > 0 ? adaptive.axialDoc : result.doc;
+                      const rec = lenFromImp(base * 0.125, units);
+                      return (
+                        <p className="text-[11px] text-muted-foreground leading-relaxed">
+                          3D Adaptive only — shaves the stair-steps left on angled walls after the deep rough. Set <span className="font-medium text-foreground">Passes → Fine Stepup</span> to ~10–15% of max stepdown (≈ <span className="font-mono text-foreground">{rec.toFixed(3)} {UNITS[units].length}</span>).
+                        </p>
+                      );
+                    })()}
                   </div>
                 )}
               </div>

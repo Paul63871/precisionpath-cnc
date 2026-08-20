@@ -154,9 +154,9 @@ export const OPERATIONS = [
   { id: "drilling", name: "Drilling", category: "2D", sfmMult: 0.8, chipMult: 1.0, feedMult: 1.0, wocFactor: 1.0, docMode: "drill", adaptive: false },
   { id: "engrave", name: "2D Engrave", category: "2D", sfmMult: 1.0, chipMult: 0.4, feedMult: 1.0, wocFactor: 0.02, docMode: "profile", adaptive: false },
   // 3D / High-Speed Machining (HSM)
-  { id: "3d_adaptive_rough", name: "3D Adaptive Clearing (Rough)", category: "3D", sfmMult: 1.0, chipMult: 1.0, feedMult: 1.0, wocFactor: 0.1, docMode: "hem", adaptive: true },
-  { id: "3d_adaptive_finish", name: "3D Adaptive Finishing", category: "3D", sfmMult: 1.1, chipMult: 0.8, feedMult: 1.0, wocFactor: 0.06, docMode: "hem", adaptive: true },
-  { id: "3d_pocket", name: "Pocket / Contour (3D)", category: "3D", sfmMult: 0.95, chipMult: 1.0, feedMult: 1.0, wocFactor: 0.12, docMode: "hem", adaptive: true },
+  { id: "3d_adaptive_rough", name: "3D Adaptive Clearing (Rough)", category: "3D", sfmMult: 1.0, chipMult: 1.0, feedMult: 1.0, wocFactor: 0.1, docMode: "hem", adaptive: true, fineStepup: true },
+  { id: "3d_adaptive_finish", name: "3D Adaptive Finishing", category: "3D", sfmMult: 1.1, chipMult: 0.8, feedMult: 1.0, wocFactor: 0.06, docMode: "hem", adaptive: true, fineStepup: true },
+  { id: "3d_pocket", name: "Pocket / Contour (3D)", category: "3D", sfmMult: 0.95, chipMult: 1.0, feedMult: 1.0, wocFactor: 0.12, docMode: "hem", adaptive: true, fineStepup: true },
   { id: "3d_parallel", name: "Parallel", category: "3D", sfmMult: 1.1, chipMult: 0.7, feedMult: 1.0, wocFactor: 0.06, docMode: "profile", adaptive: true },
   { id: "3d_waterline", name: "Contour (Waterline)", category: "3D", sfmMult: 1.05, chipMult: 0.7, feedMult: 1.0, wocFactor: 0.08, docMode: "profile", adaptive: true },
   { id: "3d_morph", name: "Morph / Blend", category: "3D", sfmMult: 1.1, chipMult: 0.7, feedMult: 1.0, wocFactor: 0.06, docMode: "profile", adaptive: true },
