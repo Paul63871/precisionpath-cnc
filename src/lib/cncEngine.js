@@ -63,6 +63,11 @@ export function calculate(input) {
   } else if (op.docMode === "face") {
     woc = diameter;
     doc = diameter * 0.1 * lerp(0.7, 1.2, agg);
+  } else if (op.docMode === "hem") {
+    // High-Efficiency Machining: light radial engagement, deep axial passes.
+    woc = diameter * op.wocFactor * lerp(0.8, 1.1, agg);
+    doc = diameter * 2.0 * lerp(0.7, 1.2, agg);
+    if (loc) doc = Math.min(doc, loc);
   } else {
     woc = diameter * op.wocFactor * lerp(0.8, 1.1, agg);
     doc = diameter * mat.profileDepthFactor * tt.docMult * lerp(0.6, 1.0, agg);
@@ -79,7 +84,7 @@ export function calculate(input) {
     thinningNotes.push(`Lead-angle chip thinning (${la}°) applied — feed raised to hold chip thickness.`);
   }
   // Radial chip thinning for partial-width face/roughing cuts.
-  if ((tt.id === "face_mill" || tt.id === "roughing") && woc > 0 && woc < diameter * 0.5) {
+  if ((tt.id === "face_mill" || tt.id === "roughing" || op.docMode === "hem") && woc > 0 && woc < diameter * 0.5) {
     feedMult *= 1 / Math.sqrt(woc / diameter);
     thinningNotes.push("Radial chip thinning applied — feed increased to maintain chip thickness.");
   }

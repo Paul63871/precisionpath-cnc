@@ -145,6 +145,8 @@ export const OPERATIONS = [
   { id: "slotting", name: "Slotting (Full Width)", sfmMult: 0.9, chipMult: 1.0, feedMult: 1.0, wocFactor: 1.0, docMode: "slot" },
   { id: "roughing", name: "Side Roughing", sfmMult: 1.0, chipMult: 1.0, feedMult: 1.0, wocFactor: 0.25, docMode: "profile" },
   { id: "finishing", name: "Side Finishing", sfmMult: 1.1, chipMult: 0.7, feedMult: 1.0, wocFactor: 0.08, docMode: "profile" },
+  { id: "hem_rough", name: "HEM Roughing", sfmMult: 1.0, chipMult: 1.1, feedMult: 1.0, wocFactor: 0.08, docMode: "hem" },
+  { id: "hem_finish", name: "HEM Finishing", sfmMult: 1.1, chipMult: 0.8, feedMult: 1.0, wocFactor: 0.05, docMode: "hem" },
   { id: "facing", name: "Facing / Plunging", sfmMult: 0.95, chipMult: 1.0, feedMult: 1.0, wocFactor: 1.0, docMode: "face" },
   { id: "drilling", name: "Drilling", sfmMult: 0.8, chipMult: 1.0, feedMult: 1.0, wocFactor: 1.0, docMode: "drill" },
 ];
