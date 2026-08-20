@@ -13,6 +13,7 @@ export function calculate(input) {
     diameter, flutes, loc, toolMaterialId, coatingId, toolTypeId,
     material, materialId, operationId, aggressiveness = 0.6, machine, override,
     leadAngle, cornerRadius, includedAngle, tipDiameter, thickness, neckDiameter, pointAngle,
+    radialLoad, axialDoc,
   } = input;
 
   const mat = material || PART_MATERIALS.find((m) => m.id === materialId) || PART_MATERIALS[0];
@@ -64,9 +65,11 @@ export function calculate(input) {
     woc = diameter;
     doc = diameter * 0.1 * lerp(0.7, 1.2, agg);
   } else if (op.docMode === "hem") {
-    // High-Efficiency Machining: light radial engagement, deep axial passes.
-    woc = diameter * op.wocFactor * lerp(0.8, 1.1, agg);
-    doc = diameter * 2.0 * lerp(0.7, 1.2, agg);
+    // High-Efficiency Machining / adaptive toolpaths: light radial engagement,
+    // deep axial passes. For CAM-driven adaptive paths (e.g. HSMWorks) the radial
+    // load is held constant by the toolpath, so honor the user's set values.
+    woc = (radialLoad && radialLoad > 0) ? radialLoad : diameter * op.wocFactor * lerp(0.8, 1.1, agg);
+    doc = (axialDoc && axialDoc > 0) ? axialDoc : diameter * 2.0 * lerp(0.7, 1.2, agg);
     if (loc) doc = Math.min(doc, loc);
   } else {
     woc = diameter * op.wocFactor * lerp(0.8, 1.1, agg);

@@ -9,6 +9,8 @@ import ResultsPanel from "@/components/cnc/ResultsPanel";
 import BrandLookup from "@/components/cnc/BrandLookup";
 import { calculate } from "@/lib/cncEngine";
 import { PART_MATERIALS, TOOL_TYPES } from "@/lib/cncData";
+import { UNITS, lenFromImp, lenToImp } from "@/lib/units";
+import NumberField from "@/components/NumberField";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -45,6 +47,7 @@ export default function Calculator() {
   const [saveName, setSaveName] = useState("");
   const [saving, setSaving] = useState(false);
   const [override, setOverride] = useState(null);
+  const [adaptive, setAdaptive] = useState({ radialLoad: 0, axialDoc: 0 });
 
   // Load preferences, custom materials, and machine profiles on mount.
   useEffect(() => {
@@ -99,8 +102,9 @@ export default function Calculator() {
       toolTypeId: tool.toolTypeId, material: selectedMaterial, operationId, aggressiveness, machine, override,
       leadAngle: tool.leadAngle, cornerRadius: tool.cornerRadius, includedAngle: tool.includedAngle,
       tipDiameter: tool.tipDiameter, thickness: tool.thickness, neckDiameter: tool.neckDiameter, pointAngle: tool.pointAngle,
+      radialLoad: adaptive.radialLoad, axialDoc: adaptive.axialDoc,
     });
-  }, [tool, selectedMaterial, operationId, aggressiveness, machine, override]);
+  }, [tool, selectedMaterial, operationId, aggressiveness, machine, override, adaptive]);
 
   const saveCalc = async () => {
     setSaving(true);
@@ -138,6 +142,21 @@ export default function Calculator() {
               onChange={(v) => { if (v.materialId) setMaterialId(v.materialId); if (v.operationId) setOperationId(v.operationId); }}
             />
           </Section>
+          {(operationId === "hem_rough" || operationId === "hem_finish") && (
+            <Section icon={Sliders} title="Adaptive Path Settings">
+              <p className="text-[11px] text-muted-foreground mb-3">HSMWorks adaptive toolpaths hold a constant radial load. Enter the values from your CAM to match the actual cut; leave blank to auto-calculate.</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">Radial Load ({UNITS[units].length})</Label>
+                  <NumberField className="h-9" allowClear placeholder="Auto" value={adaptive.radialLoad || undefined} onValueChange={(n) => setAdaptive((a) => ({ ...a, radialLoad: n || 0 }))} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">Axial DOC ({UNITS[units].length})</Label>
+                  <NumberField className="h-9" allowClear placeholder="Auto" value={adaptive.axialDoc || undefined} onValueChange={(n) => setAdaptive((a) => ({ ...a, axialDoc: n || 0 }))} />
+                </div>
+              </div>
+            </Section>
+          )}
           <Section icon={Cog} title="Machine">
             <MachineForm
               value={machine} onChange={setMachine} units={units} profiles={profiles}

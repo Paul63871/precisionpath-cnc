@@ -5,7 +5,8 @@ import { Input } from "@/components/ui/input";
 // like "5." or "0.0" — while propagating a valid parsed number to the parent.
 // External value changes (unit switches, loading a saved calc) are mirrored when
 // the field is not focused, so display stays in sync without clobbering in-progress edits.
-export default function NumberField({ value, onValueChange, className, placeholder }) {
+// allowClear: when true, clearing the field pushes `undefined` (used for optional/auto fields).
+export default function NumberField({ value, onValueChange, className, placeholder, allowClear }) {
   const [text, setText] = useState("");
   const [focused, setFocused] = useState(false);
 
@@ -21,8 +22,12 @@ export default function NumberField({ value, onValueChange, className, placehold
   const handleChange = (e) => {
     const t = e.target.value;
     setText(t);
+    if (t === "") {
+      if (allowClear) onValueChange(undefined);
+      return;
+    }
     const n = Number(t);
-    if (t !== "" && t !== "-" && t !== "." && !Number.isNaN(n)) {
+    if (t !== "-" && t !== "." && !Number.isNaN(n)) {
       onValueChange(n);
     }
   };
