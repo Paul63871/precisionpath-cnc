@@ -159,6 +159,16 @@ export default function Calculator() {
                   <div className="space-y-1.5 col-span-2">
                     <Label className="text-xs text-muted-foreground">Radial Load ({UNITS[units].length})</Label>
                     <NumberField className="h-9" allowClear placeholder="Auto" value={adaptive.radialLoad || undefined} onValueChange={(n) => setAdaptive((a) => ({ ...a, radialLoad: n || 0 }))} />
+                    {result && (
+                      <p className="text-[11px] text-muted-foreground leading-relaxed">
+                        Set HSMWorks radial engagement / max stepover to{" "}
+                        <span className="font-mono text-foreground">{lenFromImp(result.woc, units).toFixed(3)} {UNITS[units].length}</span>
+                        {" "}({result.radialEngagementPct}% of Ø).
+                        {result.radialThinningFactor > 1 && (
+                          <> Radial chip thinning raises feed <span className="font-mono text-amber-600">{result.radialThinningFactor}×</span> to hold chip thickness — enter this feed in the toolpath.</>
+                        )}
+                      </p>
+                    )}
                   </div>
                 )}
               </div>

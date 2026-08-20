@@ -97,9 +97,11 @@ export function calculate(input) {
     thinningNotes.push(`Lead-angle chip thinning (${la}°) applied — feed raised to hold chip thickness.`);
   }
   // Radial chip thinning for partial-width face/roughing cuts.
+  let radialThinningFactor = 1;
   if (op.adaptive && woc > 0 && woc < diameter * 0.5) {
-    feedMult *= 1 / Math.sqrt(woc / diameter);
-    thinningNotes.push("Radial chip thinning applied — feed increased to maintain chip thickness.");
+    radialThinningFactor = 1 / Math.sqrt(woc / diameter);
+    feedMult *= radialThinningFactor;
+    thinningNotes.push(`Radial chip thinning applied (${radialThinningFactor.toFixed(2)}× feed) — feed increased to maintain chip thickness.`);
   }
 
   // --- Feed (IPM) ---
@@ -141,6 +143,8 @@ export function calculate(input) {
     hpUtilization: Math.min(100, Math.round((hpRequired / m.hp) * 100)),
     passes,
     stepdown,
+    radialThinningFactor: Number(radialThinningFactor.toFixed(2)),
+    radialEngagementPct: diameter > 0 ? Math.round((woc / diameter) * 100) : 0,
     warnings,
   };
 }
