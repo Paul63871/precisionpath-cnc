@@ -97,7 +97,6 @@ export const PART_MATERIALS = [
 
 export const TOOL_MATERIALS = [
   { id: "carbide", name: "Solid Carbide", sfmMult: 1.0 },
-  { id: "carbide_coated", name: "Coated Carbide", sfmMult: 1.25 },
   { id: "hss", name: "High Speed Steel (HSS)", sfmMult: 0.35 },
   { id: "cobalt", name: "Cobalt (HSS-Co)", sfmMult: 0.45 },
   { id: "indexable", name: "Indexable Insert", sfmMult: 1.1 },
