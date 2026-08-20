@@ -5,6 +5,9 @@
     "name": {
       "type": "string"
     },
+    "tool_data": {
+      "type": "object"
+    },
     "tool_type_id": {
       "type": "string"
     },

@@ -104,15 +104,33 @@ export const COATINGS = [
   { id: "diamond", name: "Diamond (PCD)", sfmMult: 1.5 },
 ];
 
+// countField: which state field drives feed (flutes vs inserts).
+// fields: the type-specific inputs shown in the tool form.
 export const TOOL_TYPES = [
-  { id: "end_mill", name: "Square End Mill", sfmMult: 1.0, chipMult: 1.0, docMult: 1.0, isDrill: false },
-  { id: "ball_end", name: "Ball End Mill", sfmMult: 1.0, chipMult: 0.9, docMult: 0.85, isDrill: false },
-  { id: "roughing", name: "Roughing / Corn Cob", sfmMult: 1.1, chipMult: 1.2, docMult: 1.3, isDrill: false },
-  { id: "chamfer", name: "Chamfer / V-Bit", sfmMult: 1.0, chipMult: 0.8, docMult: 0.6, isDrill: false },
-  { id: "face_mill", name: "Face Mill (Indexable)", sfmMult: 1.0, chipMult: 1.1, docMult: 0.5, isDrill: false },
-  { id: "drill", name: "Drill", sfmMult: 1.0, chipMult: 1.0, docMult: 1.0, isDrill: true },
-  { id: "slot_drill", name: "Slot Drill (2-flute)", sfmMult: 1.0, chipMult: 1.0, docMult: 1.05, isDrill: false },
+  { id: "end_mill", name: "Square End Mill", sfmMult: 1.0, chipMult: 1.0, docMult: 1.0, isDrill: false, countField: "flutes", fields: ["flutes", "loc"] },
+  { id: "ball_end", name: "Ball End Mill", sfmMult: 1.0, chipMult: 0.9, docMult: 0.85, isDrill: false, countField: "flutes", fields: ["flutes", "loc"] },
+  { id: "bull_nose", name: "Bull-Nose End Mill", sfmMult: 1.0, chipMult: 1.0, docMult: 1.0, isDrill: false, countField: "flutes", fields: ["flutes", "loc", "cornerRadius"] },
+  { id: "roughing", name: "Roughing / Corn Cob", sfmMult: 1.1, chipMult: 1.2, docMult: 1.3, isDrill: false, countField: "flutes", fields: ["flutes", "loc"] },
+  { id: "chamfer", name: "Chamfer / V-Bit", sfmMult: 1.0, chipMult: 0.8, docMult: 0.6, isDrill: false, countField: "flutes", fields: ["flutes", "loc", "includedAngle", "tipDiameter"] },
+  { id: "face_mill", name: "Face Mill (Indexable)", sfmMult: 1.0, chipMult: 1.1, docMult: 0.5, isDrill: false, countField: "inserts", fields: ["inserts", "loc", "leadAngle"] },
+  { id: "drill", name: "Drill", sfmMult: 1.0, chipMult: 1.0, docMult: 1.0, isDrill: true, countField: "flutes", fields: ["flutes", "pointAngle", "loc"] },
+  { id: "slitting_saw", name: "Slitting Saw", sfmMult: 0.9, chipMult: 0.8, docMult: 1.0, isDrill: false, countField: "flutes", fields: ["flutes", "thickness"] },
+  { id: "t_slot", name: "T-Slot Cutter", sfmMult: 0.95, chipMult: 0.9, docMult: 1.0, isDrill: false, countField: "flutes", fields: ["flutes", "neckDiameter"] },
 ];
+
+// Descriptors for the type-specific tool inputs rendered in the form.
+export const FIELD_DEFS = {
+  flutes: { label: "Flutes", kind: "int", min: 1, max: 12, step: 1 },
+  inserts: { label: "Inserts", kind: "int", min: 1, max: 24, step: 1 },
+  loc: { label: "LOC", kind: "length", step: 0.01 },
+  cornerRadius: { label: "Corner Radius", kind: "length", step: 0.001 },
+  includedAngle: { label: "Included Angle", kind: "angle", step: 1 },
+  tipDiameter: { label: "Tip Diameter", kind: "length", step: 0.001 },
+  leadAngle: { label: "Lead Angle", kind: "angle", step: 1 },
+  pointAngle: { label: "Point Angle", kind: "angle", step: 1 },
+  thickness: { label: "Thickness", kind: "length", step: 0.001 },
+  neckDiameter: { label: "Neck Diameter", kind: "length", step: 0.001 },
+};
 
 // Operation presets. wocFactor and docFactor are multipliers of tool diameter.
 export const OPERATIONS = [

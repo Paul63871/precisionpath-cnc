@@ -2,12 +2,43 @@ import React from "react";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { TOOL_TYPES, TOOL_MATERIALS, COATINGS } from "@/lib/cncData";
+import { TOOL_TYPES, TOOL_MATERIALS, COATINGS, FIELD_DEFS } from "@/lib/cncData";
 import { UNITS, lenFromImp, lenToImp } from "@/lib/units";
 
 export default function ToolForm({ value, onChange, units = "imperial" }) {
   const set = (k, v) => onChange({ ...value, [k]: v });
   const u = UNITS[units];
+  const toolType = TOOL_TYPES.find((t) => t.id === value.toolTypeId) || TOOL_TYPES[0];
+  const fields = toolType.fields || [];
+
+  const renderField = (key) => {
+    const def = FIELD_DEFS[key];
+    if (!def) return null;
+    const raw = value[key] ?? (def.kind === "int" ? 2 : 0);
+    if (def.kind === "length") {
+      return (
+        <div key={key} className="space-y-1.5">
+          <Label className="text-xs text-muted-foreground">{def.label} ({u.length})</Label>
+          <Input type="number" step={def.step} min="0" value={lenFromImp(raw, units)} onChange={(e) => set(key, lenToImp(parseFloat(e.target.value), units))} className="h-9" />
+        </div>
+      );
+    }
+    if (def.kind === "angle") {
+      return (
+        <div key={key} className="space-y-1.5">
+          <Label className="text-xs text-muted-foreground">{def.label} (°)</Label>
+          <Input type="number" step={def.step} min="0" max="180" value={raw} onChange={(e) => set(key, parseFloat(e.target.value))} className="h-9" />
+        </div>
+      );
+    }
+    return (
+      <div key={key} className="space-y-1.5">
+        <Label className="text-xs text-muted-foreground">{def.label}</Label>
+        <Input type="number" step={def.step} min={def.min} max={def.max} value={raw} onChange={(e) => set(key, parseInt(e.target.value || def.min))} className="h-9" />
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3">
@@ -26,19 +57,12 @@ export default function ToolForm({ value, onChange, units = "imperial" }) {
           </Select>
         </div>
       </div>
+      <div className="space-y-1.5">
+        <Label className="text-xs text-muted-foreground">Diameter ({u.length})</Label>
+        <Input type="number" step="0.001" min="0" value={lenFromImp(value.diameter, units)} onChange={(e) => set("diameter", lenToImp(parseFloat(e.target.value), units))} className="h-9" />
+      </div>
       <div className="grid grid-cols-3 gap-3">
-        <div className="space-y-1.5">
-          <Label className="text-xs text-muted-foreground">Diameter ({u.length})</Label>
-          <Input type="number" step="0.001" min="0" value={lenFromImp(value.diameter, units)} onChange={(e) => set("diameter", lenToImp(parseFloat(e.target.value), units))} className="h-9" />
-        </div>
-        <div className="space-y-1.5">
-          <Label className="text-xs text-muted-foreground">Flutes</Label>
-          <Input type="number" step="1" min="1" max="12" value={value.flutes} onChange={(e) => set("flutes", parseInt(e.target.value || "1"))} className="h-9" />
-        </div>
-        <div className="space-y-1.5">
-          <Label className="text-xs text-muted-foreground">LOC ({u.length})</Label>
-          <Input type="number" step="0.01" min="0" value={lenFromImp(value.loc, units)} onChange={(e) => set("loc", lenToImp(parseFloat(e.target.value), units))} className="h-9" />
-        </div>
+        {fields.map(renderField)}
       </div>
       <div className="space-y-1.5">
         <Label className="text-xs text-muted-foreground">Coating</Label>

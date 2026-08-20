@@ -8,11 +8,13 @@ import MachineForm from "@/components/cnc/MachineForm";
 import ResultsPanel from "@/components/cnc/ResultsPanel";
 import BrandLookup from "@/components/cnc/BrandLookup";
 import { calculate } from "@/lib/cncEngine";
-import { PART_MATERIALS } from "@/lib/cncData";
+import { PART_MATERIALS, TOOL_TYPES } from "@/lib/cncData";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+
+const DEFAULT_TOOL = { toolTypeId: "end_mill", toolMaterialId: "carbide", coatingId: "altin", diameter: 0.25, flutes: 3, loc: 0.75, inserts: 4, cornerRadius: 0.03, includedAngle: 90, tipDiameter: 0, leadAngle: 45, pointAngle: 118, thickness: 0.0625, neckDiameter: 0 };
 
 function Section({ icon: Icon, title, children, action }) {
   return (
@@ -31,7 +33,7 @@ function Section({ icon: Icon, title, children, action }) {
 
 export default function Calculator() {
   const location = useLocation();
-  const [tool, setTool] = useState({ toolTypeId: "end_mill", toolMaterialId: "carbide", coatingId: "altin", diameter: 0.25, flutes: 3, loc: 0.75 });
+  const [tool, setTool] = useState(DEFAULT_TOOL);
   const [materialId, setMaterialId] = useState("alum_6061");
   const [operationId, setOperationId] = useState("slotting");
   const [machine, setMachine] = useState({ hp: 5, maxRpm: 10000, minRpm: 60, maxIpm: 200 });
@@ -65,7 +67,7 @@ export default function Calculator() {
     if (!st) return;
     if (st.savedCalc) {
       const c = st.savedCalc;
-      setTool({ toolTypeId: c.tool_type_id, toolMaterialId: c.tool_material_id, coatingId: c.coating_id, diameter: c.diameter, flutes: c.flutes, loc: c.loc });
+      setTool({ ...DEFAULT_TOOL, ...(c.tool_data || { toolTypeId: c.tool_type_id, toolMaterialId: c.tool_material_id, coatingId: c.coating_id, diameter: c.diameter, flutes: c.flutes, loc: c.loc }) });
       setMaterialId(c.material_id);
       setOperationId(c.operation_id);
       setMachine({ hp: c.machine_hp, maxRpm: c.machine_max_rpm, minRpm: c.machine_min_rpm, maxIpm: c.machine_max_ipm });
@@ -89,18 +91,23 @@ export default function Calculator() {
 
   const result = useMemo(() => {
     if (!tool.diameter || tool.diameter <= 0) return null;
+    const tt = TOOL_TYPES.find((t) => t.id === tool.toolTypeId);
+    const feedCount = tool[tt?.countField] || tool.flutes || 2;
     return calculate({
-      diameter: tool.diameter, flutes: tool.flutes, loc: tool.loc,
+      diameter: tool.diameter, flutes: feedCount, loc: tool.loc,
       toolMaterialId: tool.toolMaterialId, coatingId: tool.coatingId,
       toolTypeId: tool.toolTypeId, material: selectedMaterial, operationId, aggressiveness, machine, override,
+      leadAngle: tool.leadAngle, cornerRadius: tool.cornerRadius, includedAngle: tool.includedAngle,
+      tipDiameter: tool.tipDiameter, thickness: tool.thickness, neckDiameter: tool.neckDiameter, pointAngle: tool.pointAngle,
     });
-  }, [tool, selectedMaterial, operationId, aggressiveness, machine]);
+  }, [tool, selectedMaterial, operationId, aggressiveness, machine, override]);
 
   const saveCalc = async () => {
     setSaving(true);
     try {
       await base44.entities.SavedCalculation.create({
         name: saveName || `Calc ${new Date().toLocaleString()}`,
+        tool_data: tool,
         tool_type_id: tool.toolTypeId, tool_material_id: tool.toolMaterialId, coating_id: tool.coatingId,
         diameter: tool.diameter, flutes: tool.flutes, loc: tool.loc,
         material_id: materialId, operation_id: operationId,
