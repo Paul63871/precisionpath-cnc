@@ -227,14 +227,36 @@ export function calculate(input) {
   const ipmClamped = ipm < ipmIdeal - 0.01;
 
   // --- Material removal rate & horsepower ---
-  const mrr = (op.docMode === "drill" || tt.isDrill)
+  let mrr = (op.docMode === "drill" || tt.isDrill)
     ? (Math.PI / 4) * diameter * diameter * ipm
     : woc * doc * ipm;
-  const hpRequired = mrr * mat.hpFactor;
+  let hpRequired = mrr * mat.hpFactor;
+
+  // --- HP governor (final safety net) ---
+  // The HP-driven WOC solve above picks the widest engagement the spindle can
+  // sustain, but it's clamped to a floor so we never suggest an engagement too
+  // narrow for practical chip evacuation. At high aggressiveness settings the
+  // RPM/feed can still climb past what that floor-clamped WOC can support —
+  // there's no more room to trade width for speed. Real machines don't get to
+  // ignore that: if we're still over the spindle's HP after the WOC solve,
+  // back the feed (and therefore RPM-independent MRR) down until hpRequired
+  // matches m.hp, exactly like a CAM post processor or the machine's own
+  // torque-limiting would in practice. Skipped when hp is unknown/zero.
+  let hpGovernorNote = null;
+  if (m.hp > 0 && hpRequired > m.hp * 1.005) {
+    const governorScale = m.hp / hpRequired;
+    ipm *= governorScale;
+    mrr *= governorScale;
+    hpRequired = m.hp;
+    hpGovernorNote = `Feed rate reduced ${Math.round((1 - governorScale) * 100)}% below the ideal chip-load target to stay within the machine's ${m.hp} HP — radial engagement is already at its practical minimum for this tool/material, so speed had to give instead.`;
+  } else if (m.hp > 0 && hpRequired > m.hp) {
+    hpRequired = m.hp; // clean up float noise just over the limit without a note
+  }
 
   // --- Warnings ---
   const warnings = [...thinningNotes];
   if (hpSolveNote) warnings.push(hpSolveNote);
+  if (hpGovernorNote) warnings.push(hpGovernorNote);
   if (hpRequired > m.hp) warnings.push(`Requires ~${hpRequired.toFixed(1)} HP but machine has ${m.hp} HP — reduce DOC/WOC or feed.`);
   if (rpmClamped) warnings.push(rpm > rpmIdeal ? `Spindle minimum forced RPM above ideal — reduce SFM or use smaller tool.` : `Spindle max RPM reached — ideal ${Math.round(rpmIdeal)} RPM. Increase SFM or use larger diameter.`);
   if (ipmClamped) warnings.push(`Machine max feed (${m.maxIpm} IPM) limits the programmed feed.`);
