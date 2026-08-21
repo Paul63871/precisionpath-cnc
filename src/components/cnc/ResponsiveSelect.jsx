@@ -90,7 +90,7 @@ export default function ResponsiveSelect({ value, onValueChange, options = [], p
                   className="flex w-full items-center justify-between rounded-md px-3 py-3 text-sm min-h-[44px] text-left hover:bg-accent"
                 >
                   <span>{o.label}</span>
-                  {o.value === value && <Check className="w-4 h-4 text-amber-600" />}
+                  {o.value === value && <Check className="w-4 h-4 text-brand" />}
                 </button>
               ))}
             </div>

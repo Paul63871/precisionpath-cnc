@@ -43,6 +43,7 @@ module.exports = {
   			border: 'hsl(var(--border))',
   			input: 'hsl(var(--input))',
   			ring: 'hsl(var(--ring))',
+  			brand: 'hsl(var(--brand))',
   			chart: {
   				'1': 'hsl(var(--chart-1))',
   				'2': 'hsl(var(--chart-2))',
@@ -84,6 +85,9 @@ module.exports = {
   					height: '0'
   				}
   			}
+  		},
+  		boxShadow: {
+  			card: '0 1px 2px hsl(222 47% 11% / 0.05), 0 4px 12px -4px hsl(222 47% 11% / 0.08)'
   		},
   		animation: {
   			'accordion-down': 'accordion-down 0.2s ease-out',

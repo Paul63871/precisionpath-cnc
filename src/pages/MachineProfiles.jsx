@@ -70,7 +70,7 @@ export default function MachineProfiles() {
       <div className="mx-auto max-w-5xl px-4 py-8">
         <div className="mb-6 flex items-center justify-between gap-3 select-none">
           <div>
-            <h1 className="text-xl font-semibold tracking-tight">Machine Profiles</h1>
+            <h1 className="text-2xl font-bold tracking-tight">Machine Profiles</h1>
             <p className="text-xs text-muted-foreground">Store spindle HP, RPM, and feed limits for quick selection.</p>
           </div>
           <MachineDialog onSave={create} trigger={<Button size="sm" className="h-9"><Plus className="w-4 h-4 mr-1.5" />Add</Button>} />
@@ -84,7 +84,7 @@ export default function MachineProfiles() {
         ) : (
           <div className="grid sm:grid-cols-2 gap-3">
             {items.map((m) => (
-              <div key={m.id} className="rounded-xl border border-border bg-card p-4 select-none">
+              <div key={m.id} className="rounded-xl border border-border bg-card shadow-card p-4 select-none">
                 <h3 className="font-medium text-sm">{m.name}</h3>
                 {m.notes && <p className="text-xs text-muted-foreground mt-0.5">{m.notes}</p>}
                 <div className="mt-3 grid grid-cols-4 gap-2 text-center">

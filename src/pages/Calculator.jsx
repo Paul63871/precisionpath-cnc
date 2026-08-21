@@ -7,6 +7,7 @@ import MaterialForm from "@/components/cnc/MaterialForm";
 import MachineForm from "@/components/cnc/MachineForm";
 import ResultsPanel from "@/components/cnc/ResultsPanel";
 import BrandLookup from "@/components/cnc/BrandLookup";
+import UnitsToggle from "@/components/cnc/UnitsToggle";
 import { calculate } from "@/lib/cncEngine";
 import { PART_MATERIALS, TOOL_TYPES, OPERATIONS } from "@/lib/cncData";
 import { UNITS, lenFromImp, lenToImp } from "@/lib/units";
@@ -18,17 +19,22 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 
 const DEFAULT_TOOL = { toolTypeId: "end_mill", toolMaterialId: "carbide", coatingId: "altin", diameter: 0.25, flutes: 3, loc: 0.75, inserts: 4, cornerRadius: 0.03, includedAngle: 90, tipDiameter: 0, leadAngle: 45, pointAngle: 118, thickness: 0.0625, neckDiameter: 0 };
 
-function Section({ icon: Icon, title, children, action }) {
+function Section({ icon: Icon, title, children, action, highlight }) {
   return (
-    <div className="rounded-xl border border-border bg-card p-5">
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <Icon className="w-4 h-4 text-amber-600" />
-          <h2 className="text-sm font-semibold tracking-tight">{title}</h2>
+    <div className="rounded-xl border border-border bg-card shadow-card overflow-hidden">
+      {highlight && <div className="h-1 bg-brand" />}
+      <div className="p-5">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2.5">
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand/10 text-brand">
+              <Icon className="w-4 h-4" />
+            </span>
+            <h2 className="text-sm font-semibold tracking-tight">{title}</h2>
+          </div>
+          {action}
         </div>
-        {action}
+        {children}
       </div>
-      {children}
     </div>
   );
 }
@@ -48,6 +54,7 @@ export default function Calculator() {
   const [saving, setSaving] = useState(false);
   const [override, setOverride] = useState(null);
   const [adaptive, setAdaptive] = useState({ radialLoad: 0, axialDoc: 0, featureDepth: 0, fineStepup: 0 });
+  const [prefId, setPrefId] = useState(null);
 
   // Load preferences, custom materials, and machine profiles on mount.
   useEffect(() => {
@@ -55,6 +62,7 @@ export default function Calculator() {
       try {
         const prefs = await base44.entities.UserPreference.list();
         if (prefs.length) {
+          setPrefId(prefs[0].id);
           setAggressiveness(prefs[0].aggressiveness ?? 0.6);
           setUnits(prefs[0].units || "imperial");
         }
@@ -80,6 +88,15 @@ export default function Calculator() {
       setMachine({ hp: p.hp, maxRpm: p.max_rpm, minRpm: p.min_rpm, maxIpm: p.max_ipm });
     }
   }, [location.state]);
+
+  const changeUnits = async (u) => {
+    if (u === units) return;
+    setUnits(u);
+    try {
+      if (prefId) await base44.entities.UserPreference.update(prefId, { units: u });
+      else { const r = await base44.entities.UserPreference.create({ units: u, aggressiveness }); setPrefId(r.id); }
+    } catch { /* offline/unauth — local state still updates */ }
+  };
 
   const combinedMaterials = useMemo(() => {
     const custom = customMaterials.map((m) => ({
@@ -130,9 +147,12 @@ export default function Calculator() {
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8">
-      <div className="mb-6">
-        <h1 className="text-xl font-semibold tracking-tight">Calculator</h1>
-        <p className="text-xs text-muted-foreground">Conservative, physics-based CNC parameters for any tool and material.</p>
+      <div className="mb-6 flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Calculator</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">Physics-based feeds &amp; speeds for any tool and material.</p>
+        </div>
+        <UnitsToggle value={units} onChange={changeUnits} />
       </div>
       <div className="grid lg:grid-cols-5 gap-5">
         <div className="lg:col-span-3 space-y-5">
@@ -165,7 +185,7 @@ export default function Calculator() {
                         <span className="font-mono text-foreground">{lenFromImp(result.woc, units).toFixed(3)} {UNITS[units].length}</span>
                         {" "}({result.radialEngagementPct}% of Ø).
                         {result.radialThinningFactor > 1 && (
-                          <> Radial chip thinning raises feed <span className="font-mono text-amber-600">{result.radialThinningFactor}×</span> to hold chip thickness — enter that feed in the toolpath.</>
+                          <> Radial chip thinning raises feed <span className="font-mono text-brand">{result.radialThinningFactor}×</span> to hold chip thickness — enter that feed in the toolpath.</>
                         )}
                       </p>
                     )}
@@ -214,16 +234,17 @@ export default function Calculator() {
               <div className="space-y-2">
                 <div className="flex justify-between text-xs">
                   <span className="text-muted-foreground">Conservative</span>
-                  <span className="font-mono text-amber-600">{Math.round(aggressiveness * 100)}%</span>
+                  <span className="font-mono text-brand font-semibold">{Math.round(aggressiveness * 100)}%</span>
                   <span className="text-muted-foreground">Aggressive</span>
                 </div>
-                <input type="range" min="0" max="1" step="0.05" value={aggressiveness} onChange={(e) => setAggressiveness(parseFloat(e.target.value))} className="w-full accent-amber-600" />
+                <input type="range" min="0" max="1" step="0.05" value={aggressiveness} onChange={(e) => setAggressiveness(parseFloat(e.target.value))} className="w-full accent-brand" />
                 <p className="text-[11px] text-muted-foreground">Default 60% gives slightly conservative, reliable rates.</p>
               </div>
             </Section>
             <Section
               icon={Cpu}
               title="Recommended Parameters"
+              highlight
               action={result && (
                 <Button size="sm" variant="outline" className="h-8" onClick={() => setSaveOpen(true)}>
                   <Save className="w-3.5 h-3.5 mr-1.5" />Save

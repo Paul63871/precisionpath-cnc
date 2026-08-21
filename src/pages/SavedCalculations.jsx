@@ -18,7 +18,7 @@ export default function SavedCalculations() {
     <PullToRefresh onRefresh={reload}>
       <div className="mx-auto max-w-5xl px-4 py-8">
         <div className="mb-6 select-none">
-          <h1 className="text-xl font-semibold tracking-tight">Saved Calculations</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Saved Calculations</h1>
           <p className="text-xs text-muted-foreground">Revisit settings for parts you machine often.</p>
         </div>
         {loading ? (
@@ -31,7 +31,7 @@ export default function SavedCalculations() {
         ) : (
           <div className="grid sm:grid-cols-2 gap-3">
             {items.map((c) => (
-              <div key={c.id} className="rounded-xl border border-border bg-card p-4 select-none">
+              <div key={c.id} className="rounded-xl border border-border bg-card shadow-card p-4 select-none">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <h3 className="font-medium text-sm truncate">{c.name}</h3>

@@ -74,7 +74,7 @@ export default function Materials() {
       <div className="mx-auto max-w-5xl px-4 py-8">
         <div className="mb-6 flex items-center justify-between gap-3 select-none">
           <div>
-            <h1 className="text-xl font-semibold tracking-tight">Material Library</h1>
+            <h1 className="text-2xl font-bold tracking-tight">Material Library</h1>
             <p className="text-xs text-muted-foreground">Define custom materials to refine calculation accuracy.</p>
           </div>
           <MaterialDialog onSave={create} trigger={<Button size="sm" className="h-9"><Plus className="w-4 h-4 mr-1.5" />Add</Button>} />
@@ -86,7 +86,7 @@ export default function Materials() {
             No custom materials yet. Add one to use it in the calculator.
           </div>
         ) : (
-          <div className="rounded-xl border border-border overflow-x-auto select-none">
+          <div className="rounded-xl border border-border shadow-card overflow-x-auto select-none">
             <table className="w-full text-sm">
               <thead className="bg-muted text-xs text-muted-foreground">
                 <tr>
