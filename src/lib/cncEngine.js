@@ -43,35 +43,11 @@ export function calculate(input) {
   const classMult = mat.materialClass && TOOL_MATERIAL_CLASS_MULT[mat.materialClass];
   const toolMatMult = (classMult && classMult[tm.id] != null) ? classMult[tm.id] : tm.sfmMult;
 
-  // --- Surface speed (SFM) ---
-  let sfm;
-  if (override?.sfm) {
-    sfm = override.sfm * op.sfmMult;
-  } else {
-    const [sfmMin, sfmMax] = mat.sfmRange;
-    sfm = lerp(sfmMin, sfmMax, agg) * toolMatMult * coat.sfmMult * op.sfmMult * tt.sfmMult;
-  }
-  // Standard 20% slotting speed derate (Kennametal, CGS Tool) — full-width
-  // engagement generates more heat per flute pass than partial-width milling.
-  if (op.slotDerate) sfm *= 0.8;
-
-  // --- RPM ---
-  let rpm = (sfm * 3.82) / diameter;
-  const rpmIdeal = rpm;
-  rpm = clamp(rpm, m.minRpm, m.maxRpm);
-  const rpmClamped = Math.abs(rpm - rpmIdeal) > 0.5;
-
-  // --- Chip load per tooth ---
-  const chipCurve = mat.chipCurve === "soft" ? "soft" : "metal";
-  let chipLoad;
-  if (override?.chipLoad) {
-    chipLoad = override.chipLoad * op.chipMult * lerp(0.8, 1.0, agg);
-  } else {
-    chipLoad = baseChipLoad(diameter, chipCurve) * mat.chipLoadFactor * op.chipMult * tt.chipMult;
-    chipLoad *= lerp(0.75, 1.05, agg);
-  }
-
   // --- Depth & width of cut ---
+  // Computed BEFORE speed/feed below: a ball nose tool's effective cutting
+  // diameter at the axial depth of cut determines its real surface speed and
+  // chip thickness (see the ball-nose correction after doc/woc/passes are
+  // final), so doc has to be known first.
   let woc, doc;
   let drilling = null;
   let deepHoleFeedFactor = 1;
@@ -165,12 +141,102 @@ export function calculate(input) {
   if (userPinnedWoc) woc = radialLoad;
   if (op.docMode !== "drill" && !tt.isDrill && axialDoc && axialDoc > 0) doc = axialDoc;
 
+  // Ball nose per-pass axial DOC cap. A ball nose has a full-radius curved
+  // profile, not a straight flute — the flat-end-mill "1.4-2×D per pass"
+  // logic above assumes a cylindrical shank cutting on its side and does not
+  // apply. Manufacturer ball-nose finisher data (e.g. Kennametal KDMB
+  // published max cutting depths) and general shop practice (Dapra: finishing
+  // ADOC ≤ 10% of ball diameter; Harvey/CNC Cookbook: light-roughing 3D work
+  // tops out well under 1×D) cap the practical per-pass axial engagement at a
+  // small fraction of diameter — roughly 10% for finishing ops, up to ~30% for
+  // roughing — regardless of what a flat-mill profile-depth factor would allow.
+  // This also keeps the effective-diameter correction below in its intended
+  // regime (shallow engagement near the tip), instead of silently reaching
+  // full-hemisphere engagement on a single "profile" pass sized for a flat tool.
+  if (tt.id === "ball_end" && op.docMode !== "drill" && !tt.isDrill) {
+    const ballDocCapPct = op.finishing ? 0.10 : 0.30;
+    doc = Math.min(doc, diameter * ballDocCapPct);
+  }
+
   // Feature depth → number of axial passes and the actual per-pass stepdown.
   let passes = null, stepdown = null;
   if (op.docMode !== "drill" && !tt.isDrill && featureDepth && featureDepth > 0 && doc > 0) {
     passes = Math.max(1, Math.ceil(featureDepth / doc));
     stepdown = featureDepth / passes;
     doc = stepdown; // actual per-pass depth never exceeds the feature depth
+  }
+
+  // --- Ball nose effective cutting diameter ---
+  // A ball nose only cuts at full diameter when the axial depth of cut (doc)
+  // is at least the ball radius. At shallower doc — the normal case for 3D
+  // contour/profile finishing — the actual contact point is partway up the
+  // ball, spinning at a smaller effective diameter. Using the nominal
+  // diameter for SFM there overstates real surface speed dramatically (a
+  // 0.39" ball nose at 0.20" doc contacts at ~0.20" effective diameter, not
+  // 0.39") and understates the chip load needed to hold the same chip
+  // thickness. Formula per IMCO/Harvey/NS Tool/CNC Cookbook (all agree):
+  //   De = 2 * sqrt(ap * (D - ap))   for ap <= D/2 (ap = axial doc, D = ball dia)
+  //   De = D                          for ap > D/2 (full hemisphere engaged)
+  // RPM uses De in place of D; feed-per-tooth scales by D/De to hold chip
+  // thickness (both applied below, after De is known).
+  let effectiveDiameter = diameter;
+  if (tt.id === "ball_end" && doc > 0 && doc < diameter) {
+    const ap = Math.min(doc, diameter / 2);
+    effectiveDiameter = 2 * Math.sqrt(ap * (diameter - ap));
+    effectiveDiameter = Math.max(effectiveDiameter, diameter * 0.05); // guard against ~0 at vanishing doc
+  }
+
+  // --- Surface speed (SFM) ---
+  // Tool-material speed ratio vs solid carbide, resolved by workpiece material
+  // class where we have real per-class data (HSS/cobalt/indexable/PCD vary a lot
+  // by material — see TOOL_MATERIAL_CLASS_MULT). Falls back to the tool's global
+  // sfmMult (e.g. for custom materials without a materialClass, or solid carbide
+  // itself which is always 1.0).
+  let sfm;
+  if (override?.sfm) {
+    sfm = override.sfm * op.sfmMult;
+  } else {
+    const [sfmMin, sfmMax] = mat.sfmRange;
+    sfm = lerp(sfmMin, sfmMax, agg) * toolMatMult * coat.sfmMult * op.sfmMult * tt.sfmMult;
+  }
+  // Standard 20% slotting speed derate (Kennametal, CGS Tool) — full-width
+  // engagement generates more heat per flute pass than partial-width milling.
+  if (op.slotDerate) sfm *= 0.8;
+  // Hard ceiling: no combination of aggressiveness/operation/coating
+  // multipliers should ever push a material past its own published
+  // "aggressive" SFM by more than a small margin — stacking op.sfmMult (e.g.
+  // 2D Contour's 1.1x for wall-finish quality) on top of an already-maxed
+  // aggressiveness lerp was letting SFM run 10-20% past the table's own
+  // ceiling (e.g. 660 SFM vs A36's stated 600 max), which is well outside
+  // what the coating/material can actually sustain. Cap at 1.05x the
+  // material's own sfmMax regardless of how the multipliers stack.
+  const sfmHardCap = mat.sfmRange[1] * 1.05;
+  const sfmCapped = sfm > sfmHardCap;
+  if (sfmCapped) sfm = sfmHardCap;
+
+  // --- RPM --- (effective diameter, not nominal, for ball nose at partial doc)
+  let rpm = (sfm * 3.82) / effectiveDiameter;
+  const rpmIdeal = rpm;
+  rpm = clamp(rpm, m.minRpm, m.maxRpm);
+  const rpmClamped = Math.abs(rpm - rpmIdeal) > 0.5;
+
+  // --- Chip load per tooth ---
+  const chipCurve = mat.chipCurve === "soft" ? "soft" : "metal";
+  let chipLoad;
+  if (override?.chipLoad) {
+    chipLoad = override.chipLoad * op.chipMult * lerp(0.8, 1.0, agg);
+  } else {
+    chipLoad = baseChipLoad(diameter, chipCurve) * mat.chipLoadFactor * op.chipMult * tt.chipMult;
+    chipLoad *= lerp(0.75, 1.05, agg);
+  }
+  // Ball nose feed-per-tooth compensation: at reduced effective diameter the
+  // edge sweeps a shorter arc per revolution, so the programmed chip load
+  // must scale up by D/De to hold the same actual chip thickness (same
+  // sources as the effective-diameter formula above).
+  let ballFeedCompensation = 1;
+  if (tt.id === "ball_end" && effectiveDiameter < diameter) {
+    ballFeedCompensation = diameter / effectiveDiameter;
+    chipLoad *= ballFeedCompensation;
   }
 
   // --- HP-driven radial engagement (HEM/adaptive only) ---
@@ -306,6 +372,8 @@ export function calculate(input) {
 
   // --- Warnings ---
   const warnings = [...thinningNotes];
+  if (sfmCapped) warnings.push(`SFM capped at ${Math.round(sfmHardCap)} (105% of ${mat.name}'s published range) — the stacked aggressiveness/operation/coating multipliers wanted a higher speed than this material and coating can realistically sustain.`);
+  if (tt.id === "ball_end" && effectiveDiameter < diameter * 0.999) warnings.push(`Ball nose effective cutting diameter is ${effectiveDiameter.toFixed(3)}" at ${doc.toFixed(3)}" axial DOC (nominal diameter ${diameter}") — RPM and chip load are computed from this smaller effective diameter, not the nominal one, per standard ball-nose speed/feed correction.`);
   if (hpSolveNote) warnings.push(hpSolveNote);
   if (hpGovernorNote) warnings.push(hpGovernorNote);
   if (hpRequired > hpAtCutter) warnings.push(`Requires ~${hpRequired.toFixed(1)} HP but the machine has ${hpAtCutter} HP — reduce DOC/WOC or feed.`);
@@ -343,6 +411,9 @@ export function calculate(input) {
     radialThinningFactor: Number(radialThinningFactor.toFixed(2)),
     radialEngagementPct: diameter > 0 ? Math.round((woc / diameter) * 100) : 0,
     adaptive: !!op.adaptive,
+    effectiveDiameter: Number(effectiveDiameter.toFixed(3)),
+    ballFeedCompensation: Number(ballFeedCompensation.toFixed(3)),
+    sfmCapped,
     warnings,
   };
 }
