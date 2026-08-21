@@ -24,6 +24,16 @@ export function calculate(input) {
   const op = OPERATIONS.find((o) => o.id === operationId) || OPERATIONS[0];
   const m = machine || { hp: 5, maxRpm: 10000, minRpm: 60, maxIpm: 200 };
   const agg = clamp(aggressiveness, 0, 1);
+  // "Required Horse Power" on a machine spec sheet is the rated/nameplate
+  // figure, and manufacturer tool bots (e.g. IMCO ToolBot) size cuts against
+  // that full rated number directly — they don't separately discount for
+  // spindle mechanical losses in the number they display. To land on the same
+  // stepover/feed/RPM for a given rated HP, hpAtCutter here intentionally
+  // equals the rated HP; the ~13% real-world spindle efficiency loss (belts,
+  // gearbox, bearings) is instead folded into mat.hpFactor (see cncData.js),
+  // which is where it belongs physically — it's a property of how much
+  // material a given HP number actually removes, not a separate machine trait.
+  const hpAtCutter = m.hp;
 
   // Tool-material speed ratio vs solid carbide, resolved by workpiece material
   // class where we have real per-class data (HSS/cobalt/indexable/PCD vary a lot
@@ -187,20 +197,50 @@ export function calculate(input) {
   // no meaningful closed-form solution (it would collapse WOC toward zero).
   let hpSolveNote = null;
   const hpUtilizationTarget = lerp(0.20, 1.0, agg);
-  if (op.docMode === "hem" && !userPinnedWoc && hemWocBounds && m.hp > 0 && doc > 0 && rpm > 0 && chipLoad > 0) {
-    const hpTarget = m.hp * hpUtilizationTarget;
+  if (op.docMode === "hem" && !userPinnedWoc && hemWocBounds && hpAtCutter > 0 && doc > 0 && rpm > 0 && chipLoad > 0) {
+    const hpTarget = hpAtCutter * hpUtilizationTarget;
     const K = (diameter * doc * rpm * flutes * chipLoad) / 2;
     if (K > 0) {
       const target = (hpTarget / mat.hpFactor) / K;
       const rSolved = (target * target) / (1 + target * target);
-      const rClamped = clamp(rSolved, hemWocBounds.floorPct, hemWocBounds.ceilingPct);
-      woc = diameter * rClamped;
-      if (rSolved > hemWocBounds.ceilingPct) {
-        hpSolveNote = `Radial engagement capped at ${Math.round(hemWocBounds.ceilingPct * 100)}% of diameter (chip-evacuation ceiling) instead of the HP-solved ${Math.round(rSolved * 100)}% — this tool/material combo hits its stepover limit before using the targeted ${Math.round(hpUtilizationTarget * 100)}% of spindle power.`;
-      } else if (rSolved < hemWocBounds.floorPct) {
-        hpSolveNote = `Stepover reduced toward its ${Math.round(hemWocBounds.floorPct * 100)}% practical minimum for this tool/material — even at that narrow engagement it may still be under the targeted ${Math.round(hpUtilizationTarget * 100)}% spindle utilization; consider a shallower axial DOC.`;
+
+      if (rSolved < hemWocBounds.floorPct) {
+        // Racing RPM to its aggressiveness-driven ceiling first and only then
+        // solving WOC starves the stepover before the HP budget is used —
+        // real tool bots (IMCO ToolBot and similar) do the opposite: they hold
+        // a reasonable, chip-evacuation-friendly stepover and back SFM/RPM off
+        // until that stepover alone balances the HP budget. Reproduce that by
+        // re-solving RPM at the floor WOC: MRR = floorWoc·doc·rpm·flutes·chipLoad/thinning,
+        // hpTarget = MRR·hpFactor  =>  solve rpm directly (chipLoad/thinning both
+        // depend on rpm only through chip load's own agg lerp, already fixed above,
+        // and thinning depends only on the ratio, which is now fixed at the floor).
+        const floorRatio = hemWocBounds.floorPct;
+        const floorWoc = diameter * floorRatio;
+        const floorThinning = floorRatio < 0.5 ? 1 / Math.sqrt(1 - Math.pow(1 - 2 * floorRatio, 2)) : 1;
+        const denom = floorWoc * doc * flutes * chipLoad * floorThinning * mat.hpFactor;
+        const rpmForFloor = denom > 0 ? hpTarget / denom : rpm;
+        // Only take this path if it lands within a sane speed band for the
+        // tool/material (never below the machine's min RPM, never above what
+        // ~1.35x the material's max published SFM would imply) — otherwise
+        // fall through to the ordinary clamp so we don't invent an unrealistic
+        // spindle speed just to hit a power number.
+        const sfmMaxRpm = (mat.sfmRange[1] * 1.35 * 3.82) / diameter;
+        if (rpmForFloor >= m.minRpm && rpmForFloor <= Math.max(m.maxRpm, sfmMaxRpm)) {
+          rpm = clamp(rpmForFloor, m.minRpm, m.maxRpm);
+          woc = floorWoc;
+          hpSolveNote = `Stepover held at a chip-evacuation-friendly ${Math.round(floorRatio * 100)}% of diameter and spindle speed backed down to ${Math.round(rpm)} RPM to land exactly on the targeted ${Math.round(hpUtilizationTarget * 100)}% of spindle power — this is how manufacturer tool bots size a cut, balancing stepover and speed together instead of maxing speed first.`;
+        } else {
+          woc = floorWoc;
+          hpSolveNote = `Stepover reduced toward its ${Math.round(floorRatio * 100)}% practical minimum for this tool/material — even at that narrow engagement it may still be under the targeted ${Math.round(hpUtilizationTarget * 100)}% spindle utilization; consider a shallower axial DOC.`;
+        }
       } else {
-        hpSolveNote = `Radial engagement (${Math.round(rClamped * 100)}% of diameter) solved to use ${Math.round(hpUtilizationTarget * 100)}% of available spindle horsepower at this aggressiveness setting — this is how manufacturer tool bots size the stepover, not a fixed percentage.`;
+        const rClamped = clamp(rSolved, hemWocBounds.floorPct, hemWocBounds.ceilingPct);
+        woc = diameter * rClamped;
+        if (rSolved > hemWocBounds.ceilingPct) {
+          hpSolveNote = `Radial engagement capped at ${Math.round(hemWocBounds.ceilingPct * 100)}% of diameter (chip-evacuation ceiling) instead of the HP-solved ${Math.round(rSolved * 100)}% — this tool/material combo hits its stepover limit before using the targeted ${Math.round(hpUtilizationTarget * 100)}% of spindle power.`;
+        } else {
+          hpSolveNote = `Radial engagement (${Math.round(rClamped * 100)}% of diameter) solved to use ${Math.round(hpUtilizationTarget * 100)}% of available spindle horsepower at this aggressiveness setting — this is how manufacturer tool bots size the stepover, not a fixed percentage.`;
+        }
       }
     }
   }
@@ -248,26 +288,27 @@ export function calculate(input) {
   // narrow for practical chip evacuation. At high aggressiveness settings the
   // RPM/feed can still climb past what that floor-clamped WOC can support —
   // there's no more room to trade width for speed. Real machines don't get to
-  // ignore that: if we're still over the spindle's HP after the WOC solve,
-  // back the feed (and therefore RPM-independent MRR) down until hpRequired
-  // matches m.hp, exactly like a CAM post processor or the machine's own
-  // torque-limiting would in practice. Skipped when hp is unknown/zero.
+  // ignore that: if we're still over the spindle's effective (post-
+  // efficiency) HP after the WOC solve, back the feed (and therefore
+  // RPM-independent MRR) down until hpRequired matches hpAtCutter, exactly
+  // like a CAM post processor or the machine's own torque-limiting would in
+  // practice. Skipped when hp is unknown/zero.
   let hpGovernorNote = null;
-  if (m.hp > 0 && hpRequired > m.hp * 1.005) {
-    const governorScale = m.hp / hpRequired;
+  if (hpAtCutter > 0 && hpRequired > hpAtCutter * 1.005) {
+    const governorScale = hpAtCutter / hpRequired;
     ipm *= governorScale;
     mrr *= governorScale;
-    hpRequired = m.hp;
-    hpGovernorNote = `Feed rate reduced ${Math.round((1 - governorScale) * 100)}% below the ideal chip-load target to stay within the machine's ${m.hp} HP — radial engagement is already at its practical minimum for this tool/material, so speed had to give instead.`;
-  } else if (m.hp > 0 && hpRequired > m.hp) {
-    hpRequired = m.hp; // clean up float noise just over the limit without a note
+    hpRequired = hpAtCutter;
+    hpGovernorNote = `Feed rate reduced ${Math.round((1 - governorScale) * 100)}% below the ideal chip-load target to stay within the machine's available power — radial engagement is already at its practical minimum for this tool/material, so speed had to give instead.`;
+  } else if (hpAtCutter > 0 && hpRequired > hpAtCutter) {
+    hpRequired = hpAtCutter; // clean up float noise just over the limit without a note
   }
 
   // --- Warnings ---
   const warnings = [...thinningNotes];
   if (hpSolveNote) warnings.push(hpSolveNote);
   if (hpGovernorNote) warnings.push(hpGovernorNote);
-  if (hpRequired > m.hp) warnings.push(`Requires ~${hpRequired.toFixed(1)} HP but machine has ${m.hp} HP — reduce DOC/WOC or feed.`);
+  if (hpRequired > hpAtCutter) warnings.push(`Requires ~${hpRequired.toFixed(1)} HP but the machine has ${hpAtCutter} HP — reduce DOC/WOC or feed.`);
   if (rpmClamped) warnings.push(rpm > rpmIdeal ? `Spindle minimum forced RPM above ideal — reduce SFM or use smaller tool.` : `Spindle max RPM reached — ideal ${Math.round(rpmIdeal)} RPM. Increase SFM or use larger diameter.`);
   if (ipmClamped) warnings.push(`Machine max feed (${m.maxIpm} IPM) limits the programmed feed.`);
   if (loc && (op.docMode === "profile" || op.docMode === "hem") && doc > loc) warnings.push(`Per-pass axial DOC (${doc.toFixed(3)}") exceeds flute LOC (${loc}") — confirm chip evacuation.`);
@@ -295,7 +336,7 @@ export function calculate(input) {
     mrr: Number(mrr.toFixed(2)),
     hpRequired: Number(hpRequired.toFixed(2)),
     hpAvailable: m.hp,
-    hpUtilization: Math.min(100, Math.round((hpRequired / m.hp) * 100)),
+    hpUtilization: Math.min(100, Math.round((hpRequired / hpAtCutter) * 100)),
     passes,
     stepdown,
     drilling,
