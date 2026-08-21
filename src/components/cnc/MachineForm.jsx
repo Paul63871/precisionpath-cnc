@@ -2,6 +2,7 @@ import React from "react";
 import { Label } from "@/components/ui/label";
 import { UNITS, feedFromImp, feedToImp, powerFromImp, powerToImp } from "@/lib/units";
 import NumberField from "@/components/NumberField";
+import ResponsiveSelect from "@/components/cnc/ResponsiveSelect";
 
 export default function MachineForm({ value, onChange, units = "imperial", profiles = [], onLoadProfile }) {
   const set = (k, v) => onChange({ ...value, [k]: v });
@@ -11,18 +12,15 @@ export default function MachineForm({ value, onChange, units = "imperial", profi
       {profiles.length > 0 && (
         <div className="space-y-1.5">
           <Label className="text-xs text-muted-foreground">Load Profile</Label>
-          <select
-            className="h-11 min-h-[44px] w-full rounded-md border border-input bg-background px-2 text-sm"
+          <ResponsiveSelect
             value=""
-            onChange={(e) => {
-              const p = profiles.find((x) => x.id === e.target.value);
+            onValueChange={(id) => {
+              const p = profiles.find((x) => x.id === id);
               if (p) onLoadProfile(p);
-              e.target.value = "";
             }}
-          >
-            <option value="" disabled>Select a saved machine…</option>
-            {profiles.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </select>
+            placeholder="Select a saved machine…"
+            options={profiles.map((p) => ({ value: p.id, label: p.name }))}
+          />
         </div>
       )}
       <div className="grid grid-cols-2 gap-3">

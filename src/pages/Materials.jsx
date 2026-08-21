@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import NumberField from "@/components/NumberField";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
+import PullToRefresh from "@/components/PullToRefresh";
 
 const EMPTY = {
   name: "", category: "Custom", sfm_min: 200, sfm_max: 600,
@@ -67,57 +68,59 @@ function MaterialDialog({ initial, onSave, trigger }) {
 }
 
 export default function Materials() {
-  const { items, loading, create, update, remove } = useEntityList("CustomMaterial");
+  const { items, loading, create, update, remove, reload } = useEntityList("CustomMaterial");
   return (
-    <div className="mx-auto max-w-5xl px-4 py-8">
-      <div className="mb-6 flex items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold tracking-tight">Material Library</h1>
-          <p className="text-xs text-muted-foreground">Define custom materials to refine calculation accuracy.</p>
+    <PullToRefresh onRefresh={reload}>
+      <div className="mx-auto max-w-5xl px-4 py-8">
+        <div className="mb-6 flex items-center justify-between gap-3 select-none">
+          <div>
+            <h1 className="text-xl font-semibold tracking-tight">Material Library</h1>
+            <p className="text-xs text-muted-foreground">Define custom materials to refine calculation accuracy.</p>
+          </div>
+          <MaterialDialog onSave={create} trigger={<Button size="sm" className="h-9"><Plus className="w-4 h-4 mr-1.5" />Add</Button>} />
         </div>
-        <MaterialDialog onSave={create} trigger={<Button size="sm" className="h-9"><Plus className="w-4 h-4 mr-1.5" />Add</Button>} />
-      </div>
-      {loading ? (
-        <div className="text-sm text-muted-foreground">Loading…</div>
-      ) : items.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-border p-10 text-center text-sm text-muted-foreground">
-          No custom materials yet. Add one to use it in the calculator.
-        </div>
-      ) : (
-        <div className="rounded-xl border border-border overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-muted text-xs text-muted-foreground">
-              <tr>
-                <th className="text-left px-3 py-2 font-medium">Name</th>
-                <th className="text-left px-3 py-2 font-medium">Category</th>
-                <th className="text-left px-3 py-2 font-medium">SFM</th>
-                <th className="text-left px-3 py-2 font-medium">Chip</th>
-                <th className="text-left px-3 py-2 font-medium">HP</th>
-                <th className="text-left px-3 py-2 font-medium">Depth</th>
-                <th className="px-3 py-2"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((m) => (
-                <tr key={m.id} className="border-t border-border">
-                  <td className="px-3 py-2 font-medium">{m.name}</td>
-                  <td className="px-3 py-2 text-muted-foreground">{m.category}</td>
-                  <td className="px-3 py-2 font-mono">{m.sfm_min}–{m.sfm_max}</td>
-                  <td className="px-3 py-2 font-mono">{m.chip_load_factor}</td>
-                  <td className="px-3 py-2 font-mono">{m.hp_factor}</td>
-                  <td className="px-3 py-2 font-mono">{m.slot_depth_factor}/{m.profile_depth_factor}</td>
-                  <td className="px-3 py-2 text-right">
-                    <div className="flex justify-end gap-1">
-                      <MaterialDialog initial={m} onSave={(f) => update(m.id, f)} trigger={<Button size="sm" variant="ghost" className="h-8 w-8 p-0"><Pencil className="w-3.5 h-3.5" /></Button>} />
-                      <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => remove(m.id)}><Trash2 className="w-3.5 h-3.5" /></Button>
-                    </div>
-                  </td>
+        {loading ? (
+          <div className="text-sm text-muted-foreground">Loading…</div>
+        ) : items.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-border p-10 text-center text-sm text-muted-foreground select-none">
+            No custom materials yet. Add one to use it in the calculator.
+          </div>
+        ) : (
+          <div className="rounded-xl border border-border overflow-x-auto select-none">
+            <table className="w-full text-sm">
+              <thead className="bg-muted text-xs text-muted-foreground">
+                <tr>
+                  <th className="text-left px-3 py-2 font-medium">Name</th>
+                  <th className="text-left px-3 py-2 font-medium">Category</th>
+                  <th className="text-left px-3 py-2 font-medium">SFM</th>
+                  <th className="text-left px-3 py-2 font-medium">Chip</th>
+                  <th className="text-left px-3 py-2 font-medium">HP</th>
+                  <th className="text-left px-3 py-2 font-medium">Depth</th>
+                  <th className="px-3 py-2"></th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
+              </thead>
+              <tbody>
+                {items.map((m) => (
+                  <tr key={m.id} className="border-t border-border">
+                    <td className="px-3 py-2 font-medium">{m.name}</td>
+                    <td className="px-3 py-2 text-muted-foreground">{m.category}</td>
+                    <td className="px-3 py-2 font-mono">{m.sfm_min}–{m.sfm_max}</td>
+                    <td className="px-3 py-2 font-mono">{m.chip_load_factor}</td>
+                    <td className="px-3 py-2 font-mono">{m.hp_factor}</td>
+                    <td className="px-3 py-2 font-mono">{m.slot_depth_factor}/{m.profile_depth_factor}</td>
+                    <td className="px-3 py-2 text-right">
+                      <div className="flex justify-end gap-1">
+                        <MaterialDialog initial={m} onSave={(f) => update(m.id, f)} trigger={<Button size="sm" variant="ghost" className="h-8 w-8 p-0"><Pencil className="w-3.5 h-3.5" /></Button>} />
+                        <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => remove(m.id)}><Trash2 className="w-3.5 h-3.5" /></Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </PullToRefresh>
   );
 }

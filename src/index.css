@@ -95,6 +95,10 @@
   body {
     @apply bg-background text-foreground font-body;
   }
+
+  button, a, [role="button"], h1, h2, h3, h4, th {
+    @apply select-none;
+  }
 }
 
 @layer utilities {

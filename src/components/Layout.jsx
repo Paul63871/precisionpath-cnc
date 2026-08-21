@@ -13,7 +13,7 @@ const NAV = [
 export default function Layout() {
   const { pathname } = useLocation();
   const navigate = useNavigate();
-  const isHome = pathname === "/";
+  const isMainTab = NAV.some((n) => n.to === pathname);
   const current = NAV.find((n) => n.to === pathname);
 
   return (
@@ -52,8 +52,8 @@ export default function Layout() {
         </div>
       </header>
 
-      {/* Mobile back bar for child screens */}
-      {!isHome && (
+      {/* Mobile back bar for child (non-tab) screens only */}
+      {!isMainTab && (
         <div
           className="md:hidden sticky top-0 z-30 border-b border-border bg-background/95 backdrop-blur select-none"
           style={{ paddingTop: "env(safe-area-inset-top)" }}
