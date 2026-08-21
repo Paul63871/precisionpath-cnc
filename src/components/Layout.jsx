@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useRef } from "react";
 import { Link, useLocation, useNavigate, Outlet } from "react-router-dom";
 import { Cpu, Bookmark, Boxes, Cog, Sliders, ArrowLeft } from "lucide-react";
 
@@ -19,6 +19,16 @@ function resolveChildTitle(pathname) {
   return seg.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) || "Back";
 }
 
+// Resolve which bottom tab a pathname belongs to (exact for "/", prefix for others).
+function tabForPath(pathname) {
+  for (const n of NAV) {
+    if (n.to === "/" ? pathname === "/" : pathname === n.to || pathname.startsWith(n.to + "/")) {
+      return n.to;
+    }
+  }
+  return null;
+}
+
 export default function Layout() {
   const { pathname } = useLocation();
   const navigate = useNavigate();
@@ -26,12 +36,27 @@ export default function Layout() {
   const isMainTab = !!current;
   const headerTitle = isMainTab ? current.title || "Feeds & Speeds" : resolveChildTitle(pathname);
 
-  // Re-selecting the active tab resets to that page's root and scrolls to top.
+  // Per-tab memory of the last visited (incl. nested) pathname, so switching
+  // back to a tab restores its deepest route via native history navigation.
+  const tabMemory = useRef(new Map());
+  useEffect(() => {
+    const tab = tabForPath(pathname);
+    if (tab) tabMemory.current.set(tab, pathname);
+  }, [pathname]);
+
   const onTabClick = (e, to) => {
+    // Re-selecting the active tab resets to its root and scrolls to top.
     if (pathname === to) {
       e.preventDefault();
       navigate(to);
       window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
+    // Switching tabs: restore the cached nested pathname for that tab if any.
+    const cached = tabMemory.current.get(to);
+    if (cached && cached !== to) {
+      e.preventDefault();
+      navigate(cached);
     }
   };
 

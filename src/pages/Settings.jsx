@@ -60,14 +60,20 @@ export default function Settings() {
   const requestDeletion = async () => {
     setDeleting(true);
     try {
-      // Account deletion is finalized through Base44 support to verify identity
-      // and permanently remove all stored data. We log the user out here as the
-      // in-app half of the request.
+      // Automated purge: delete every owned entity (calculations, materials,
+      // machine profiles, preferences) via the backend function, then sign out.
+      await base44.functions.invoke("deleteAccount", {});
       toast({
-        title: "Deletion requested",
-        description: "Your account deletion request was submitted. Contact Base44 support to finalize removal of your data.",
+        title: "Account deleted",
+        description: "Your saved data and preferences have been permanently removed.",
       });
       await base44.auth.logout();
+    } catch (e) {
+      toast({
+        title: "Deletion failed",
+        description: "Could not complete deletion. Please try again or contact Base44 support.",
+        variant: "destructive",
+      });
     } finally {
       setDeleting(false);
     }
@@ -125,7 +131,7 @@ export default function Settings() {
               <p>By proceeding you acknowledge that:</p>
               <ul className="list-disc pl-5 space-y-1">
                 <li>All your data will be erased and cannot be recovered.</li>
-                <li>Deletion is finalized through Base44 support to verify your identity.</li>
+                <li>Deletion is immediate and automated — your data is purged instantly.</li>
                 <li>You will be signed out immediately after submitting the request.</li>
               </ul>
             </div>
