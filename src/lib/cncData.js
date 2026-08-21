@@ -104,11 +104,19 @@ export const TOOL_MATERIALS = [
 
 export const COATINGS = [
   { id: "none", name: "Uncoated (Bright)", sfmMult: 1.0 },
-  { id: "tin", name: "TiN", sfmMult: 1.1 },
-  { id: "tialn", name: "TiAlN", sfmMult: 1.2 },
-  { id: "altin", name: "AlTiN", sfmMult: 1.3 },
-  { id: "zrn", name: "ZrN", sfmMult: 1.15 },
-  { id: "dlc", name: "DLC / Diamond-like", sfmMult: 1.25 },
+  { id: "tin", name: "TiN (Titanium Nitride)", sfmMult: 1.1 },
+  { id: "ticn", name: "TiCN (Titanium Carbonitride)", sfmMult: 1.2 },
+  { id: "crn", name: "CrN (Chromium Nitride)", sfmMult: 1.1 },
+  { id: "zrn", name: "ZrN (Zirconium Nitride)", sfmMult: 1.15 },
+  { id: "tialn", name: "TiAlN (Titanium Aluminum Nitride)", sfmMult: 1.2 },
+  { id: "altin", name: "AlTiN (Aluminum Titanium Nitride)", sfmMult: 1.3 },
+  { id: "tib2", name: "TiB2 (Titanium Diboride — aluminum)", sfmMult: 1.2 },
+  { id: "alcrn", name: "AlCrN (Aluminum Chromium Nitride)", sfmMult: 1.35 },
+  { id: "alcrnx", name: "AlCrNX (AlCrN-X, enhanced)", sfmMult: 1.45 },
+  { id: "alcrsin", name: "AlCrSiN (AlCrN-Si nanocomposite)", sfmMult: 1.4 },
+  { id: "naco", name: "nACo (AlTiN-Si nanocomposite)", sfmMult: 1.45 },
+  { id: "tialsin", name: "TiAlSiN (TiAlN-Si nanocomposite)", sfmMult: 1.4 },
+  { id: "dlc", name: "DLC / Diamond-like Carbon", sfmMult: 1.25 },
   { id: "diamond", name: "Diamond (PCD)", sfmMult: 1.5 },
 ];
 
