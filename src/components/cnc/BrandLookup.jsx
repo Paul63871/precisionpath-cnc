@@ -2,21 +2,67 @@ import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Search, Loader2, CheckCircle2, AlertTriangle, ExternalLink, BadgeCheck } from "lucide-react";
+import { Search, Loader2, CheckCircle2, AlertTriangle, ExternalLink, BadgeCheck, ShieldAlert } from "lucide-react";
 import { base44 } from "@/api/base44Client";
+import { PART_MATERIALS } from "@/lib/cncData";
 
-export default function BrandLookup({ materialName, onApply }) {
+// Client-side result cache — same brand+part+material lookup within a session
+// reuses the prior answer instead of re-running the LLM+web search every time.
+const lookupCache = new Map();
+
+// Plausibility bounds: an LLM-reported SFM/chip-load that falls wildly outside
+// the physically reasonable range for the selected workpiece material's own
+// table (PART_MATERIALS sfmRange) is more likely a hallucination or a mismatched
+// source page than a genuine outlier — flag it instead of silently trusting it.
+function plausibilityCheck(res, materialId) {
+  const mat = PART_MATERIALS.find((m) => m.id === materialId);
+  const flags = [];
+  if (!res.source_url) flags.push("No source URL was returned — this value cannot be independently verified.");
+  if (mat && res.sfm) {
+    const [lo, hi] = mat.sfmRange;
+    // Allow generous headroom either side (tool material / coating can shift this
+    // a lot) — only flag values far outside even a wide margin.
+    const floor = lo * 0.15, ceiling = hi * 4;
+    if (res.sfm < floor || res.sfm > ceiling) {
+      flags.push(`Reported SFM (${res.sfm}) is far outside the typical range for ${mat.name} (~${lo}-${hi} SFM) — double-check before trusting this value.`);
+    }
+  }
+  if (res.chip_load_per_tooth && (res.chip_load_per_tooth <= 0 || res.chip_load_per_tooth > 0.05)) {
+    flags.push(`Reported chip load (${res.chip_load_per_tooth}"/tooth) is outside a physically normal range — likely an error.`);
+  }
+  if (res.diameter_in && (res.diameter_in <= 0 || res.diameter_in > 6)) {
+    flags.push(`Reported diameter (${res.diameter_in}") looks implausible for a rotating cutting tool.`);
+  }
+  return flags;
+}
+
+export default function BrandLookup({ materialName, materialId, onApply }) {
   const [brand, setBrand] = useState("");
   const [model, setModel] = useState("");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
+  const [flags, setFlags] = useState([]);
   const [error, setError] = useState("");
+  const [fromCache, setFromCache] = useState(false);
 
   const lookup = async () => {
     if (!brand && !model) return;
     setLoading(true);
     setError("");
     setResult(null);
+    setFlags([]);
+    setFromCache(false);
+
+    const cacheKey = `${brand.trim().toLowerCase()}|${model.trim().toLowerCase()}|${materialName || ""}`;
+    if (lookupCache.has(cacheKey)) {
+      const cached = lookupCache.get(cacheKey);
+      setResult(cached);
+      setFlags(cached.found ? plausibilityCheck(cached, materialId) : []);
+      setFromCache(true);
+      setLoading(false);
+      return;
+    }
+
     try {
       const prompt = `You are a CNC machining expert. A user is looking up a specific cutting tool by its exact manufacturer part number.
 
@@ -59,7 +105,14 @@ RULES:
           },
         },
       });
-      setResult(res);
+      // A non-estimate claim with no source URL is not actually verified — downgrade
+      // it to an estimate rather than trusting an uncited "published" claim.
+      const safeRes = (res.is_estimate === false && !res.source_url)
+        ? { ...res, is_estimate: true, notes: [res.notes, "(Downgraded to estimate — no source URL was returned to verify this figure.)"].filter(Boolean).join(" ") }
+        : res;
+      lookupCache.set(cacheKey, safeRes);
+      setResult(safeRes);
+      setFlags(safeRes.found ? plausibilityCheck(safeRes, materialId) : []);
     } catch (e) {
       setError("Lookup failed. Try again or enter values manually.");
     } finally {
@@ -130,14 +183,24 @@ RULES:
                 </a>
               )}
               {result.notes && <p className="text-muted-foreground pt-0.5">{result.notes}</p>}
+              {fromCache && <p className="text-[10px] text-muted-foreground/70 italic">Reused from an earlier lookup this session.</p>}
+              {flags.length > 0 && (
+                <div className="rounded-md border border-red-300 bg-red-50 p-2 space-y-1">
+                  {flags.map((f, i) => (
+                    <p key={i} className="flex items-start gap-1.5 text-[11px] text-red-700">
+                      <ShieldAlert className="w-3.5 h-3.5 mt-0.5 shrink-0" /> {f}
+                    </p>
+                  ))}
+                </div>
+              )}
               {result.sfm && (
                 <Button
                   size="sm"
-                  variant={exact ? "default" : "outline"}
+                  variant={exact && flags.length === 0 ? "default" : "outline"}
                   className="w-full h-8 mt-1"
                   onClick={() => onApply({ sfm: result.sfm, chipLoad: result.chip_load_per_tooth })}
                 >
-                  Apply to calculator
+                  {flags.length > 0 ? "Apply anyway (unverified)" : "Apply to calculator"}
                 </Button>
               )}
             </div>

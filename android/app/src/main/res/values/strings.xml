@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">PrecisionPath CNC</string>
+    <string name="title_activity_main">PrecisionPath CNC</string>
+    <string name="package_name">com.precisionpath.cnc</string>
+    <string name="custom_url_scheme">com.precisionpath.cnc</string>
+</resources>

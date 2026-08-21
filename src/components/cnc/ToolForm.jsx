@@ -10,6 +10,7 @@ export default function ToolForm({ value, onChange, units = "imperial" }) {
   const u = UNITS[units];
   const toolType = TOOL_TYPES.find((t) => t.id === value.toolTypeId) || TOOL_TYPES[0];
   const fields = toolType.fields || [];
+  const coating = COATINGS.find((c) => c.id === value.coatingId);
 
   const renderField = (key) => {
     const def = FIELD_DEFS[key];
@@ -73,6 +74,11 @@ export default function ToolForm({ value, onChange, units = "imperial" }) {
           onValueChange={(v) => set("coatingId", v)}
           options={COATINGS.map((c) => ({ value: c.id, label: c.name }))}
         />
+        {coating && coating.verified === false && (
+          <p className="text-xs text-muted-foreground/80 pt-0.5">
+            No published manufacturer speed chart exists for this coating — the speed multiplier is an engineering estimate.
+          </p>
+        )}
       </div>
     </div>
   );

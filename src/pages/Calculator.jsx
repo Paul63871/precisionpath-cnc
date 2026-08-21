@@ -225,7 +225,7 @@ export default function Calculator() {
             />
           </Section>
           <Section icon={Sparkles} title="Brand / Model Lookup (optional)">
-            <BrandLookup materialName={selectedMaterial.name} onApply={(v) => setOverride(v)} />
+            <BrandLookup materialName={selectedMaterial.name} materialId={selectedMaterial.id} onApply={(v) => setOverride(v)} />
           </Section>
         </div>
         <div className="lg:col-span-2">

@@ -1,5 +1,6 @@
 import {
-  PART_MATERIALS, TOOL_MATERIALS, COATINGS, TOOL_TYPES, OPERATIONS,
+  PART_MATERIALS, TOOL_MATERIALS, TOOL_MATERIAL_CLASS_MULT, COATINGS,
+  TOOL_TYPES, OPERATIONS, WOC_CLASS_TARGETS,
   baseChipLoad, lerp, clamp,
 } from "./cncData";
 
@@ -24,14 +25,25 @@ export function calculate(input) {
   const m = machine || { hp: 5, maxRpm: 10000, minRpm: 60, maxIpm: 200 };
   const agg = clamp(aggressiveness, 0, 1);
 
+  // Tool-material speed ratio vs solid carbide, resolved by workpiece material
+  // class where we have real per-class data (HSS/cobalt/indexable/PCD vary a lot
+  // by material — see TOOL_MATERIAL_CLASS_MULT). Falls back to the tool's global
+  // sfmMult (e.g. for custom materials without a materialClass, or solid carbide
+  // itself which is always 1.0).
+  const classMult = mat.materialClass && TOOL_MATERIAL_CLASS_MULT[mat.materialClass];
+  const toolMatMult = (classMult && classMult[tm.id] != null) ? classMult[tm.id] : tm.sfmMult;
+
   // --- Surface speed (SFM) ---
   let sfm;
   if (override?.sfm) {
     sfm = override.sfm * op.sfmMult;
   } else {
     const [sfmMin, sfmMax] = mat.sfmRange;
-    sfm = lerp(sfmMin, sfmMax, agg) * tm.sfmMult * coat.sfmMult * op.sfmMult * tt.sfmMult;
+    sfm = lerp(sfmMin, sfmMax, agg) * toolMatMult * coat.sfmMult * op.sfmMult * tt.sfmMult;
   }
+  // Standard 20% slotting speed derate (Kennametal, CGS Tool) — full-width
+  // engagement generates more heat per flute pass than partial-width milling.
+  if (op.slotDerate) sfm *= 0.8;
 
   // --- RPM ---
   let rpm = (sfm * 3.82) / diameter;
@@ -40,11 +52,12 @@ export function calculate(input) {
   const rpmClamped = Math.abs(rpm - rpmIdeal) > 0.5;
 
   // --- Chip load per tooth ---
+  const chipCurve = mat.chipCurve === "soft" ? "soft" : "metal";
   let chipLoad;
   if (override?.chipLoad) {
     chipLoad = override.chipLoad * op.chipMult * lerp(0.8, 1.0, agg);
   } else {
-    chipLoad = baseChipLoad(diameter) * mat.chipLoadFactor * op.chipMult * tt.chipMult;
+    chipLoad = baseChipLoad(diameter, chipCurve) * mat.chipLoadFactor * op.chipMult * tt.chipMult;
     chipLoad *= lerp(0.75, 1.05, agg);
   }
 
@@ -94,19 +107,38 @@ export function calculate(input) {
     if (loc) doc = Math.min(doc, loc);
   } else if (op.docMode === "slot") {
     woc = diameter;
-    doc = diameter * mat.slotDepthFactor * tt.docMult * lerp(0.6, 1.0, agg);
+    // Slot depth scales by diameter as well as material (OSG breakpoints:
+    // 0.25×D under 0.8", 0.50×D from 0.8-2", 1.00×D above 2" — smaller tools
+    // need a lower multiple regardless of material toughness).
+    const diaBreak = diameter < 0.8 ? 0.25 : diameter < 2.0 ? 0.5 : 1.0;
+    doc = diameter * Math.min(mat.slotDepthFactor, diaBreak) * tt.docMult * lerp(0.6, 1.0, agg);
     if (diameter > 0.5) doc = Math.min(doc, diameter * 1.2);
   } else if (op.docMode === "face") {
     woc = diameter;
     doc = diameter * 0.1 * lerp(0.7, 1.2, agg);
   } else if (op.docMode === "hem") {
-    // High-Efficiency Machining / adaptive toolpaths: light radial engagement,
-    // deep axial passes.
-    woc = diameter * op.wocFactor * lerp(0.8, 1.1, agg);
+    // High-Efficiency Machining / adaptive toolpaths: radial engagement now
+    // driven by material-class WOC targets (aluminum runs much wider stepovers
+    // than titanium/hardened steel at the same "aggressiveness" — see
+    // WOC_CLASS_TARGETS). Falls back to the operation's flat wocFactor for
+    // materials without a materialClass (e.g. legacy custom materials).
+    const wocClass = mat.materialClass && WOC_CLASS_TARGETS[mat.materialClass];
+    if (wocClass) {
+      const [rMin, rMax] = op.finishing ? wocClass.finishPct : wocClass.roughPct;
+      const pct = Math.min(wocClass.ceiling, lerp(rMin, rMax, agg));
+      woc = diameter * pct;
+    } else {
+      woc = diameter * op.wocFactor * lerp(0.8, 1.1, agg);
+    }
     doc = diameter * 2.0 * lerp(0.7, 1.2, agg);
   } else {
     woc = diameter * op.wocFactor * lerp(0.8, 1.1, agg);
-    doc = diameter * mat.profileDepthFactor * tt.docMult * lerp(0.6, 1.0, agg);
+    // Profile (side-milling) axial depth. Cap at 2×D per published ceilings
+    // (CGS Tool, Helical/Harvey HEM, Sandvik trochoidal, Autodesk Fusion all
+    // publish 1.5-2×D ceilings) unless radial engagement is very light (<10% of
+    // diameter), where a long-flute tool can safely go deeper.
+    const profCap = (woc / diameter) < 0.10 ? mat.profileDepthFactor : Math.min(mat.profileDepthFactor, 2.0);
+    doc = diameter * profCap * tt.docMult * lerp(0.6, 1.0, agg);
   }
   // CAM-driven paths (HSMWorks 2D & 3D adaptive / rough / finish) hold a set radial
   // engagement; honor the user's set radial load and axial step-down. Axial DOC is
@@ -169,6 +201,8 @@ export function calculate(input) {
   if (tt.id === "bull_nose" && cornerRadius && op.docMode === "slot" && doc > cornerRadius * 2) warnings.push("Bull-nose full-width slotting deeper than the corner radius — chip evacuation at the radius is tight; peck or reduce DOC.");
   if (mat.category === "Stainless" || mat.category === "Titanium" || mat.category === "Superalloy") warnings.push("Work hardening / heat-sensitive alloy — keep chip load up, avoid rubbing, use coolant or air.");
   if (mat.id === "cfrp" || mat.id === "g10") warnings.push("Abrasive composite — expect rapid tool wear; diamond-coated carbide recommended.");
+  if (coat.verified === false) warnings.push(`${coat.name} speed multiplier is an engineering estimate — no manufacturer speed chart is published for this coating.`);
+  if (mat.hpFactorEstimate) warnings.push("Horsepower factor for this material is an engineering estimate, not sourced from a published handbook value.");
 
   // Programmed feed per tooth = table feed / (rpm × flutes). This is the value
   // entered in CAM; it exceeds the actual chip thickness whenever chip thinning applies.

@@ -30,3 +30,15 @@ dist-ssr
 .env
 .vite
 base44/.app.jsonc
+
+# Native app build outputs (keep project scaffolding, ignore build artifacts)
+ios/App/Pods
+ios/App/build
+ios/App/App.xcworkspace/xcuserdata
+ios/App/*.xcuserstate
+android/.gradle
+android/app/build
+android/build
+android/local.properties
+android/**/*.keystore
+*.jks
