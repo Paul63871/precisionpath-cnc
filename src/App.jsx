@@ -12,6 +12,7 @@ import SavedCalculations from './pages/SavedCalculations';
 import Materials from './pages/Materials';
 import MachineProfiles from './pages/MachineProfiles';
 import Settings from './pages/Settings';
+import Reference from './pages/Reference';
 import Layout from './components/Layout';
 
 const AuthenticatedApp = () => {
@@ -47,6 +48,7 @@ const AuthenticatedApp = () => {
         <Route path="/materials" element={<Materials />} />
         <Route path="/machine-profiles" element={<MachineProfiles />} />
         <Route path="/settings" element={<Settings />} />
+        <Route path="/reference" element={<Reference />} />
       </Route>
       <Route path="*" element={<PageNotFound />} />
     </Routes>
