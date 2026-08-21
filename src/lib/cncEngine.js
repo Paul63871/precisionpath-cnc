@@ -177,20 +177,30 @@ export function calculate(input) {
   // pinned a radial load, (b) for non-HEM ops, or (c) when the machine has no
   // HP figure — otherwise it's replaced by the HP-solved value, clamped to
   // the table's floor/ceiling band as a chip-evacuation/deflection safety net.
+  //
+  // The power BUDGET the solve targets is itself scaled by aggressiveness —
+  // not a flat 100% of the spindle every time — so the slider behaves the way
+  // a machinist expects: dial to 0% and the cut asks for only a conservative
+  // fraction of available HP; dial to 100% and it uses every bit of the
+  // spindle's rated power (never more, per the governor below). Floored at
+  // 20% utilization at agg=0 rather than 0%, since a near-zero HP target has
+  // no meaningful closed-form solution (it would collapse WOC toward zero).
   let hpSolveNote = null;
+  const hpUtilizationTarget = lerp(0.20, 1.0, agg);
   if (op.docMode === "hem" && !userPinnedWoc && hemWocBounds && m.hp > 0 && doc > 0 && rpm > 0 && chipLoad > 0) {
+    const hpTarget = m.hp * hpUtilizationTarget;
     const K = (diameter * doc * rpm * flutes * chipLoad) / 2;
     if (K > 0) {
-      const target = (m.hp / mat.hpFactor) / K;
+      const target = (hpTarget / mat.hpFactor) / K;
       const rSolved = (target * target) / (1 + target * target);
       const rClamped = clamp(rSolved, hemWocBounds.floorPct, hemWocBounds.ceilingPct);
       woc = diameter * rClamped;
       if (rSolved > hemWocBounds.ceilingPct) {
-        hpSolveNote = `Spindle has more than enough power for a full-width chip-evacuation-safe stepover — radial engagement capped at ${Math.round(hemWocBounds.ceilingPct * 100)}% of diameter instead of the HP-solved ${Math.round(rSolved * 100)}%.`;
+        hpSolveNote = `Radial engagement capped at ${Math.round(hemWocBounds.ceilingPct * 100)}% of diameter (chip-evacuation ceiling) instead of the HP-solved ${Math.round(rSolved * 100)}% — this tool/material combo hits its stepover limit before using the targeted ${Math.round(hpUtilizationTarget * 100)}% of spindle power.`;
       } else if (rSolved < hemWocBounds.floorPct) {
-        hpSolveNote = `Available spindle power is tight for this tool/material/DOC combo — stepover reduced toward ${Math.round(hemWocBounds.floorPct * 100)}% of diameter and it may still be underpowered; consider a shallower axial DOC.`;
+        hpSolveNote = `Stepover reduced toward its ${Math.round(hemWocBounds.floorPct * 100)}% practical minimum for this tool/material — even at that narrow engagement it may still be under the targeted ${Math.round(hpUtilizationTarget * 100)}% spindle utilization; consider a shallower axial DOC.`;
       } else {
-        hpSolveNote = `Radial engagement (${Math.round(rClamped * 100)}% of diameter) solved from available spindle horsepower — this is how manufacturer tool bots size the stepover, not a fixed percentage.`;
+        hpSolveNote = `Radial engagement (${Math.round(rClamped * 100)}% of diameter) solved to use ${Math.round(hpUtilizationTarget * 100)}% of available spindle horsepower at this aggressiveness setting — this is how manufacturer tool bots size the stepover, not a fixed percentage.`;
       }
     }
   }
