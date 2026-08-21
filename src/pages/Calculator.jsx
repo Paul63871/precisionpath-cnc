@@ -189,6 +189,15 @@ export default function Calculator() {
               </div>
             </Section>
           )}
+          {operationId === "drilling" && (
+            <Section icon={Sliders} title="Hole">
+              <p className="text-[11px] text-muted-foreground mb-3">Enter the total hole depth. The calculator generates a peck-drilling cycle (G83, full retract) for holes deeper than 3× diameter, scaled to the tool, material, and depth.</p>
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Hole Depth ({UNITS[units].length})</Label>
+                <NumberField className="h-9" allowClear placeholder="Auto (3×D)" value={adaptive.featureDepth || undefined} onValueChange={(n) => setAdaptive((a) => ({ ...a, featureDepth: n || 0 }))} />
+              </div>
+            </Section>
+          )}
           <Section icon={Cog} title="Machine">
             <MachineForm
               value={machine} onChange={setMachine} units={units} profiles={profiles}

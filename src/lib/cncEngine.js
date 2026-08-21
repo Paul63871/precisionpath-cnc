@@ -50,9 +50,44 @@ export function calculate(input) {
 
   // --- Depth & width of cut ---
   let woc, doc;
+  let drilling = null;
+  let deepHoleFeedFactor = 1;
   if (op.docMode === "drill" || tt.isDrill) {
+    // Peck-drilling cycle generation. G83 (full retract) for holes > 3×D;
+    // G81 single plunge for shallow holes. Peck depth scales with material
+    // (gummy alloys get smaller pecks) and shrinks for deep holes.
+    const holeDepth = (featureDepth && featureDepth > 0) ? featureDepth : (loc || diameter * 3);
+    const depthRatio = holeDepth / diameter;
+    const peckBase = (mat.category === "Stainless" || mat.category === "Titanium" || mat.category === "Superalloy") ? 0.5
+      : (mat.category === "Composite") ? 0.6
+      : (mat.category === "Steel" || mat.category === "Iron") ? 0.75
+      : 1.0;
+    deepHoleFeedFactor = clamp(1 - Math.max(0, depthRatio - 3) * 0.06, 0.4, 1.0);
+    let peckDepth = Math.max(diameter * peckBase * deepHoleFeedFactor, Math.max(0.05, diameter * 0.15));
+    const peckCount = Math.max(1, Math.ceil(holeDepth / peckDepth));
+    peckDepth = holeDepth / peckCount;
+    const retract = Math.max(0.1, diameter * 0.2);
+    const dwell = (mat.category === "Stainless" || mat.category === "Titanium" || mat.category === "Superalloy") ? 0.3 : 0.1;
+    const cycle = depthRatio > 3 ? "G83" : "G81";
+    const dNotes = [];
+    if (depthRatio <= 3) dNotes.push(`Shallow hole (${depthRatio.toFixed(1)}×D) — single plunge (G81), no pecking needed.`);
+    if (depthRatio > 3) dNotes.push(`Deep hole (${depthRatio.toFixed(1)}×D) — peck drilling (G83) with full retract to clear chips.`);
+    if (depthRatio > 5) dNotes.push(`Very deep hole — feed reduced ${Math.round((1 - deepHoleFeedFactor) * 100)}% to protect the drill.`);
+    if (loc && holeDepth > loc) dNotes.push(`Hole depth exceeds flute LOC (${loc}") — ensure through-spindle coolant or peck to evacuate chips.`);
+    if (tm.id === "carbide" && depthRatio > 3) dNotes.push("Pecking carbide drills risks edge chipping — prefer parabolic carbide or HSS for deep pecking.");
+    if (mat.category === "Stainless" || mat.category === "Titanium" || mat.category === "Superalloy") dNotes.push("Work-hardening alloy — pecks clear chips and prevent hardening at the hole bottom; keep feed up.");
+    drilling = {
+      holeDepth: Number(holeDepth.toFixed(3)),
+      depthRatio: Number(depthRatio.toFixed(1)),
+      cycle,
+      peckDepth: Number(peckDepth.toFixed(3)),
+      peckCount,
+      retract: Number(retract.toFixed(3)),
+      dwell,
+      notes: dNotes,
+    };
     woc = diameter;
-    doc = Math.min(diameter * 3, loc || diameter * 3);
+    doc = holeDepth;
   } else if (tt.id === "slitting_saw" && thickness) {
     woc = thickness; // kerf width = blade thickness
     doc = diameter * mat.slotDepthFactor * tt.docMult * lerp(0.6, 1.0, agg);
@@ -81,7 +116,7 @@ export function calculate(input) {
 
   // Feature depth → number of axial passes and the actual per-pass stepdown.
   let passes = null, stepdown = null;
-  if (featureDepth && featureDepth > 0 && doc > 0) {
+  if (op.docMode !== "drill" && !tt.isDrill && featureDepth && featureDepth > 0 && doc > 0) {
     passes = Math.max(1, Math.ceil(featureDepth / doc));
     stepdown = featureDepth / passes;
     doc = stepdown; // actual per-pass depth never exceeds the feature depth
@@ -110,7 +145,7 @@ export function calculate(input) {
   // --- Feed (IPM) ---
   let ipm;
   if (op.docMode === "drill" || tt.isDrill) {
-    ipm = rpm * chipLoad; // feed per revolution
+    ipm = rpm * chipLoad * deepHoleFeedFactor; // feed per revolution (reduced for deep holes)
   } else {
     ipm = rpm * chipLoad * flutes * feedMult;
   }
@@ -119,7 +154,9 @@ export function calculate(input) {
   const ipmClamped = ipm < ipmIdeal - 0.01;
 
   // --- Material removal rate & horsepower ---
-  const mrr = woc * doc * ipm;
+  const mrr = (op.docMode === "drill" || tt.isDrill)
+    ? (Math.PI / 4) * diameter * diameter * ipm
+    : woc * doc * ipm;
   const hpRequired = mrr * mat.hpFactor;
 
   // --- Warnings ---
@@ -153,6 +190,7 @@ export function calculate(input) {
     hpUtilization: Math.min(100, Math.round((hpRequired / m.hp) * 100)),
     passes,
     stepdown,
+    drilling,
     radialThinningFactor: Number(radialThinningFactor.toFixed(2)),
     radialEngagementPct: diameter > 0 ? Math.round((woc / diameter) * 100) : 0,
     adaptive: !!op.adaptive,

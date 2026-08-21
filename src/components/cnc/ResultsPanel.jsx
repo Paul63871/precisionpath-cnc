@@ -38,6 +38,36 @@ export default function ResultsPanel({ result, units = "imperial" }) {
           The <span className="font-medium">Radial WOC</span> above is your <span className="font-medium">Optimal Load</span> (max stepover) — enter it in HSMWorks → Passes → Optimal Load.
         </div>
       )}
+      {result.drilling && (
+        <div className="rounded-lg border border-border bg-card px-4 py-3 space-y-2.5">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Drilling Cycle</span>
+            <span className="font-mono text-sm font-semibold text-amber-600">{result.drilling.cycle}</span>
+          </div>
+          <div className="rounded-md bg-muted px-3 py-2 font-mono text-[11px] leading-relaxed text-foreground overflow-x-auto whitespace-nowrap">
+            {result.drilling.cycle} Z-{fmt(lenFromImp(result.drilling.holeDepth, units), 3)} R{fmt(lenFromImp(result.drilling.retract, units), 3)}{result.drilling.cycle === "G83" ? ` Q${fmt(lenFromImp(result.drilling.peckDepth, units), 3)} P${result.drilling.dwell.toFixed(1)}` : ""} F{feedFromImp(result.ipm, units).toFixed(1)}
+          </div>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+            <div className="flex justify-between"><span className="text-muted-foreground">Hole Depth</span><span className="font-mono">{fmt(lenFromImp(result.drilling.holeDepth, units), 3)} {u.length} ({result.drilling.depthRatio}×D)</span></div>
+            {result.drilling.cycle === "G83" ? (
+              <>
+                <div className="flex justify-between"><span className="text-muted-foreground">Peck Depth (Q)</span><span className="font-mono">{fmt(lenFromImp(result.drilling.peckDepth, units), 3)} {u.length}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Pecks</span><span className="font-mono">{result.drilling.peckCount}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Retract (R)</span><span className="font-mono">{fmt(lenFromImp(result.drilling.retract, units), 3)} {u.length}</span></div>
+              </>
+            ) : (
+              <div className="flex justify-between col-span-2"><span className="text-muted-foreground">Pecks</span><span className="font-mono">1 (single plunge)</span></div>
+            )}
+          </div>
+          {result.drilling.notes.length > 0 && (
+            <div className="space-y-1 pt-0.5">
+              {result.drilling.notes.map((n, i) => (
+                <p key={i} className="text-[11px] text-muted-foreground leading-relaxed">• {n}</p>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
       <div className="rounded-lg border border-border bg-card px-4 py-3">
         <div className="flex items-center justify-between text-xs text-muted-foreground">
           <span>Surface Speed</span><span className="font-mono">{fmt(surfaceFromImp(result.sfm, units), 1)} {u.surface}</span>
