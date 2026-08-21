@@ -18,32 +18,23 @@ export default function BrandLookup({ materialName, onApply }) {
     setError("");
     setResult(null);
     try {
-      const prompt = `You are a CNC machining expert. Find the EXACT manufacturer-recommended cutting parameters for this specific end mill.
+      const prompt = `You are a CNC machining expert. A user is looking up a specific cutting tool by its exact manufacturer part number.
 
 Brand: ${brand || "unspecified"}
-Model / part number: ${model || "unspecified"}
+Part number: ${model || "unspecified"}
 Workpiece material: ${materialName || "unspecified"}
 
-Search the web — prioritize the manufacturer's OFFICIAL speeds-and-feeds chart or product page (e.g. imcousa.com, harveytool.com, helicaltool.com, kennametal.com, niagaracutter.com, osgtool.com, yg1.com). Manufacturer charts are often PDF documents; read them carefully.
+STEP 1 — Find the product page: Search the web for the manufacturer's official product page for this exact part number. A simple search of "[brand] [part number]" (e.g. "IMCO 0340538") typically returns the manufacturer's product page as the first result. Use the search result snippets and any retrievable page content.
 
-Return up to 5 candidate tools that match this part number. For each candidate extract:
-- part_number: the exact part number as published by the manufacturer
-- description: diameter, flute count, coating, and tool type
-- diameter_in: diameter in inches (0 if unknown)
-- flutes: flute count (0 if unknown)
-- coating: coating name
-- sfm: recommended surface speed (SFM) for the workpiece material (use the midpoint of any published range)
-- chip_load_per_tooth: recommended feed per tooth (inches) for the workpiece material (use the midpoint of any published range)
-- exact_match: true ONLY if the published part number matches the requested model EXACTLY (ignoring case, spaces, and dashes)
-- source_url: the URL where the data was found
-- notes: any relevant caveat
+STEP 2 — Identify the tool: From the actual product page / search results, extract the EXACT product title and the published specifications — tool diameter, flute count, coating, length of cut, and tool type/series. These identity fields MUST come from the real product page.
 
-CRITICAL RULES:
-- You MUST actually retrieve and read the manufacturer's product page for this exact part number. Quote the exact product title from the page in the description field.
-- If web search does not return the actual manufacturer product page for this exact part number, set found=false and return an empty candidates array. Do NOT return "similar" or "closest" tools as if they were the requested tool.
-- Never fabricate specifications. If you did not read a specific value (diameter, flutes, coating, SFM, chip load) on the actual product page or its speeds-and-feeds chart, set that field to null/0 — do not guess.
-- Only set exact_match=true if the part number printed on the page matches the requested model exactly (ignoring case, spaces, and dashes).
-- Sort candidates so exact matches come first.`;
+STEP 3 — Speeds & feeds: If the manufacturer publishes a speeds-and-feeds chart or recommended parameters for this tool in the workpiece material, use those values and set is_estimate=false. If no chart is published, give a best engineering estimate of SFM and chip load per tooth based on the tool's coating/material class and the workpiece material, and set is_estimate=true.
+
+RULES:
+- You MUST actually find the manufacturer's product page for this exact part number. Quote its exact product title in product_title.
+- Never fabricate the tool's identity (diameter, flutes, coating, series) — these must come from the real product page. If you could not find a product page for this exact part number, set found=false and leave every other field empty.
+- SFM and chip load may be engineering estimates when no chart is published, but the tool's geometry/identity must always be real.
+- Do not return a "similar" or different tool. If the exact part number isn't found, found=false.`;
 
       const res = await base44.integrations.Core.InvokeLLM({
         prompt,
@@ -53,24 +44,17 @@ CRITICAL RULES:
           type: "object",
           properties: {
             found: { type: "boolean" },
-            candidates: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: {
-                  part_number: { type: "string" },
-                  description: { type: "string" },
-                  diameter_in: { type: "number" },
-                  flutes: { type: "number" },
-                  coating: { type: "string" },
-                  sfm: { type: "number" },
-                  chip_load_per_tooth: { type: "number" },
-                  exact_match: { type: "boolean" },
-                  source_url: { type: "string" },
-                  notes: { type: "string" },
-                },
-              },
-            },
+            part_number: { type: "string" },
+            product_title: { type: "string" },
+            description: { type: "string" },
+            diameter_in: { type: "number" },
+            flutes: { type: "number" },
+            coating: { type: "string" },
+            tool_type: { type: "string" },
+            sfm: { type: "number" },
+            chip_load_per_tooth: { type: "number" },
+            is_estimate: { type: "boolean" },
+            source_url: { type: "string" },
             notes: { type: "string" },
           },
         },
@@ -83,21 +67,17 @@ CRITICAL RULES:
     }
   };
 
-  // Compute the exact-match flag ourselves (normalized string compare of the
-  // requested model vs. each candidate's published part number) so the AI cannot
-  // self-report a false "exact match" for a different tool.
+  // Exact match is computed from the actual part-number strings, not self-reported
+  // by the AI, so it can't be faked for a different tool.
   const norm = (s) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
   const requested = norm(model);
-  const candidates = (result?.candidates || []).map((c) => ({
-    ...c,
-    exact_match: requested ? norm(c.part_number) === requested : !!c.exact_match,
-  }));
-  const exact = candidates.find((c) => c.exact_match);
+  const exact = result?.found && requested && norm(result.part_number) === requested;
+  const isEstimate = result?.is_estimate;
 
   return (
     <div className="space-y-3">
       <p className="text-xs text-muted-foreground">
-        Optionally look up a specific tool by brand and exact model number. We search the manufacturer's official speeds-and-feeds chart and return matching tools — apply the exact match to your setup.
+        Optionally look up a specific tool by brand and exact model number. We find the manufacturer's product page, pull the real tool specs, and apply its SFM and chip load to your setup.
       </p>
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1.5">
@@ -106,7 +86,7 @@ CRITICAL RULES:
         </div>
         <div className="space-y-1.5">
           <Label className="text-xs text-muted-foreground">Model / Part #</Label>
-          <Input value={model} onChange={(e) => setModel(e.target.value)} placeholder="e.g. 50506-C3" className="h-9" />
+          <Input value={model} onChange={(e) => setModel(e.target.value)} placeholder="e.g. 0340538" className="h-9" />
         </div>
       </div>
       <Button onClick={lookup} disabled={loading || (!brand && !model)} variant="secondary" className="w-full h-9">
@@ -117,49 +97,51 @@ CRITICAL RULES:
 
       {result && (
         <div className="space-y-2">
-          <div className={`flex items-center gap-1.5 text-xs font-medium ${exact ? "text-emerald-700" : "text-amber-700"}`}>
-            {exact ? <CheckCircle2 className="w-4 h-4 text-emerald-600" /> : <AlertTriangle className="w-4 h-4 text-amber-600" />}
-            {exact
-              ? "Exact match found — apply it below."
-              : candidates.length
-                ? "No exact part-number match — these are the closest tools found. Verify before applying."
-                : "No matching tools found. Check the part number or enter values manually."}
-          </div>
-
-          {candidates.map((c, i) => (
-            <div key={i} className={`rounded-lg border p-3 space-y-1.5 text-xs ${c.exact_match ? "border-emerald-300 bg-emerald-50" : "border-border bg-card"}`}>
+          {!result.found ? (
+            <div className="flex items-center gap-1.5 text-xs font-medium text-amber-700">
+              <AlertTriangle className="w-4 h-4 text-amber-600" />
+              No product page found for that part number. Check the number or enter values manually.
+            </div>
+          ) : (
+            <div className={`rounded-lg border p-3 space-y-1.5 text-xs ${exact ? "border-emerald-300 bg-emerald-50" : "border-amber-300 bg-amber-50"}`}>
               <div className="flex items-center justify-between gap-2">
-                <span className="font-mono font-semibold text-foreground">{c.part_number || "—"}</span>
-                {c.exact_match && (
+                <span className="font-mono font-semibold text-foreground">{result.part_number || "—"}</span>
+                {exact ? (
                   <span className="inline-flex items-center gap-1 text-emerald-700 font-medium"><BadgeCheck className="w-3.5 h-3.5" /> Exact</span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 text-amber-700 font-medium"><AlertTriangle className="w-3.5 h-3.5" /> Part # mismatch</span>
                 )}
               </div>
-              {c.description && <p className="text-muted-foreground">{c.description}</p>}
+              {result.product_title && <p className="font-medium text-foreground">{result.product_title}</p>}
+              {result.description && <p className="text-muted-foreground">{result.description}</p>}
               <div className="grid grid-cols-2 gap-y-0.5 font-mono pt-0.5">
-                <span className="text-muted-foreground">SFM:</span><span>{c.sfm || "—"}</span>
-                <span className="text-muted-foreground">Chip load:</span><span>{c.chip_load_per_tooth || "—"}</span>
-                {c.coating && <><span className="text-muted-foreground">Coating:</span><span>{c.coating}</span></>}
+                <span className="text-muted-foreground">SFM:</span><span>{result.sfm || "—"}</span>
+                <span className="text-muted-foreground">Chip load:</span><span>{result.chip_load_per_tooth || "—"}</span>
+                {result.coating && <><span className="text-muted-foreground">Coating:</span><span>{result.coating}</span></>}
+                {result.flutes ? <><span className="text-muted-foreground">Flutes:</span><span>{result.flutes}</span></> : null}
+                {result.diameter_in ? <><span className="text-muted-foreground">Ø:</span><span>{result.diameter_in}"</span></> : null}
               </div>
-              {c.source_url && (
-                <a href={c.source_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[11px] text-blue-600 hover:underline pt-0.5">
+              {isEstimate && (
+                <p className="text-[11px] text-amber-700 pt-0.5">SFM / chip load are an engineering estimate — no manufacturer chart was published for this tool.</p>
+              )}
+              {result.source_url && (
+                <a href={result.source_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[11px] text-blue-600 hover:underline pt-0.5">
                   <ExternalLink className="w-3 h-3" /> Source
                 </a>
               )}
-              {c.notes && <p className="text-muted-foreground pt-0.5">{c.notes}</p>}
-              {c.sfm && (
+              {result.notes && <p className="text-muted-foreground pt-0.5">{result.notes}</p>}
+              {result.sfm && (
                 <Button
                   size="sm"
-                  variant={c.exact_match ? "default" : "outline"}
+                  variant={exact ? "default" : "outline"}
                   className="w-full h-8 mt-1"
-                  onClick={() => onApply({ sfm: c.sfm, chipLoad: c.chip_load_per_tooth })}
+                  onClick={() => onApply({ sfm: result.sfm, chipLoad: result.chip_load_per_tooth })}
                 >
                   Apply to calculator
                 </Button>
               )}
             </div>
-          ))}
-
-          {result.notes && <p className="text-[11px] text-muted-foreground pt-1">{result.notes}</p>}
+          )}
         </div>
       )}
     </div>
