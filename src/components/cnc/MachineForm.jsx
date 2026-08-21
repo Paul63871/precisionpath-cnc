@@ -12,7 +12,7 @@ export default function MachineForm({ value, onChange, units = "imperial", profi
         <div className="space-y-1.5">
           <Label className="text-xs text-muted-foreground">Load Profile</Label>
           <select
-            className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+            className="h-11 min-h-[44px] w-full rounded-md border border-input bg-background px-2 text-sm"
             value=""
             onChange={(e) => {
               const p = profiles.find((x) => x.id === e.target.value);
@@ -28,19 +28,19 @@ export default function MachineForm({ value, onChange, units = "imperial", profi
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1.5">
           <Label className="text-xs text-muted-foreground">Spindle ({u.power})</Label>
-          <NumberField className="h-9" value={powerFromImp(value.hp, units)} onValueChange={(n) => set("hp", powerToImp(n, units))} />
+          <NumberField value={powerFromImp(value.hp, units)} onValueChange={(n) => set("hp", powerToImp(n, units))} />
         </div>
         <div className="space-y-1.5">
           <Label className="text-xs text-muted-foreground">Max Feed ({u.feed})</Label>
-          <NumberField className="h-9" value={feedFromImp(value.maxIpm, units)} onValueChange={(n) => set("maxIpm", feedToImp(n, units))} />
+          <NumberField value={feedFromImp(value.maxIpm, units)} onValueChange={(n) => set("maxIpm", feedToImp(n, units))} />
         </div>
         <div className="space-y-1.5">
           <Label className="text-xs text-muted-foreground">Max RPM</Label>
-          <NumberField className="h-9" value={value.maxRpm} onValueChange={(n) => set("maxRpm", n)} />
+          <NumberField value={value.maxRpm} onValueChange={(n) => set("maxRpm", n)} />
         </div>
         <div className="space-y-1.5">
           <Label className="text-xs text-muted-foreground">Min RPM</Label>
-          <NumberField className="h-9" value={value.minRpm} onValueChange={(n) => set("minRpm", n)} />
+          <NumberField value={value.minRpm} onValueChange={(n) => set("minRpm", n)} />
         </div>
       </div>
     </div>

@@ -1,14 +1,22 @@
 import React from "react";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
+import ResponsiveSelect from "@/components/cnc/ResponsiveSelect";
 import { OPERATIONS } from "@/lib/cncData";
+import MaterialSearch from "@/components/cnc/MaterialSearch";
 
 const OP_GROUPS = [
   { category: "2D", label: "2D / 2.5-Axis" },
   { category: "3D", label: "3D / HSM" },
   { category: "Multi-Axis", label: "Multi-Axis & Special" },
 ];
-import MaterialSearch from "@/components/cnc/MaterialSearch";
+
+const opOptions = OP_GROUPS.flatMap((g) =>
+  OPERATIONS.filter((o) => o.category === g.category).map((o) => ({
+    value: o.id,
+    label: o.name,
+    group: g.label,
+  }))
+);
 
 export default function MaterialForm({ materials, materialId, operationId, onChange }) {
   return (
@@ -19,19 +27,11 @@ export default function MaterialForm({ materials, materialId, operationId, onCha
       </div>
       <div className="space-y-1.5">
         <Label className="text-xs text-muted-foreground">Operation</Label>
-        <Select value={operationId} onValueChange={(v) => onChange({ operationId: v })}>
-          <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            {OP_GROUPS.map((g) => (
-              <SelectGroup key={g.category}>
-                <SelectLabel>{g.label}</SelectLabel>
-                {OPERATIONS.filter((o) => o.category === g.category).map((o) => (
-                  <SelectItem key={o.id} value={o.id}>{o.name}</SelectItem>
-                ))}
-              </SelectGroup>
-            ))}
-          </SelectContent>
-        </Select>
+        <ResponsiveSelect
+          value={operationId}
+          onValueChange={(v) => onChange({ operationId: v })}
+          options={opOptions}
+        />
       </div>
     </div>
   );

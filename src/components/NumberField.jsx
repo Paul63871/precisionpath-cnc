@@ -40,7 +40,7 @@ export default function NumberField({ value, onValueChange, className, placehold
       onChange={handleChange}
       onFocus={() => setFocused(true)}
       onBlur={() => setFocused(false)}
-      className={className}
+      className={`min-h-[44px] ${className || ""}`}
       placeholder={placeholder}
     />
   );
