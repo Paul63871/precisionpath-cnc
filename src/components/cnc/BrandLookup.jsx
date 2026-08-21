@@ -28,7 +28,7 @@ STEP 1 — Find the product page: Search the web for the manufacturer's official
 
 STEP 2 — Identify the tool: From the actual product page / search results, extract the EXACT product title and the published specifications — tool diameter, flute count, coating, length of cut, and tool type/series. These identity fields MUST come from the real product page.
 
-STEP 3 — Speeds & feeds: If the manufacturer publishes a speeds-and-feeds chart or recommended parameters for this tool in the workpiece material, use those values and set is_estimate=false. If no chart is published, give a best engineering estimate of SFM and chip load per tooth based on the tool's coating/material class and the workpiece material, and set is_estimate=true.
+STEP 3 — Speeds & feeds: Dig for the manufacturer's PUBLISHED speeds & feeds — do not estimate if real data exists. Run additional web searches to find them, e.g. "[brand] [series] speeds and feeds", "[brand] [series] SFM chip load [workpiece material]", or the manufacturer's online speeds-and-feeds calculator/tool-bot (IMCO, Harvey, Helical, Kennametal, Niagara, OSG, YG1 all publish these). Read the chart or calculator output for the tool's diameter/flute count in the workpiece material and use those exact SFM and chip-load-per-tooth values, then set is_estimate=false. Only if, after searching, no published chart or calculator exists for this tool, give a best engineering estimate based on the tool's coating/material class and the workpiece material and set is_estimate=true.
 
 RULES:
 - You MUST actually find the manufacturer's product page for this exact part number. Quote its exact product title in product_title.
