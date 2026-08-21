@@ -4,13 +4,14 @@ import { UNITS, lenFromImp, feedFromImp, surfaceFromImp, powerFromImp, mrrFromIm
 
 function Metric({ icon: Icon, label, value, unit, accent }) {
   return (
-    <div className="rounded-lg border border-border bg-muted/30 px-4 py-3">
+    <div className="min-w-0 rounded-lg border border-border bg-muted/30 px-3 py-3 sm:px-4">
       <div className="flex items-center gap-1.5 text-muted-foreground">
-        <Icon className="w-3.5 h-3.5" />
-        <span className="text-[11px] uppercase tracking-wide font-medium">{label}</span>
+        <Icon className="w-3.5 h-3.5 shrink-0" />
+        <span className="text-[11px] uppercase tracking-wide font-medium truncate">{label}</span>
       </div>
-      <div className={`mt-1 font-mono text-2xl tabular-nums ${accent || "text-foreground"}`}>
-        {value}<span className="ml-1 text-sm text-muted-foreground font-sans">{unit}</span>
+      <div className="mt-1 flex items-baseline gap-1 flex-wrap">
+        <span className={`font-mono text-xl sm:text-2xl tabular-nums leading-tight ${accent || "text-foreground"}`}>{value}</span>
+        <span className="text-sm text-muted-foreground font-sans">{unit}</span>
       </div>
     </div>
   );
