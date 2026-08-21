@@ -39,15 +39,16 @@ Return up to 5 candidate tools that match this part number. For each candidate e
 - notes: any relevant caveat
 
 CRITICAL RULES:
-- Do NOT guess or invent data. If you cannot find a candidate's official published data, do not include it.
-- Only set exact_match=true for a precise part-number match. Partial or "similar" tools must be exact_match=false.
-- If you cannot find the exact requested tool at all, return an empty candidates array and set found=false.
+- You MUST actually retrieve and read the manufacturer's product page for this exact part number. Quote the exact product title from the page in the description field.
+- If web search does not return the actual manufacturer product page for this exact part number, set found=false and return an empty candidates array. Do NOT return "similar" or "closest" tools as if they were the requested tool.
+- Never fabricate specifications. If you did not read a specific value (diameter, flutes, coating, SFM, chip load) on the actual product page or its speeds-and-feeds chart, set that field to null/0 — do not guess.
+- Only set exact_match=true if the part number printed on the page matches the requested model exactly (ignoring case, spaces, and dashes).
 - Sort candidates so exact matches come first.`;
 
       const res = await base44.integrations.Core.InvokeLLM({
         prompt,
         add_context_from_internet: true,
-        model: "gemini_3_flash",
+        model: "gemini_3_1_pro",
         response_json_schema: {
           type: "object",
           properties: {
@@ -82,7 +83,15 @@ CRITICAL RULES:
     }
   };
 
-  const candidates = result?.candidates || [];
+  // Compute the exact-match flag ourselves (normalized string compare of the
+  // requested model vs. each candidate's published part number) so the AI cannot
+  // self-report a false "exact match" for a different tool.
+  const norm = (s) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const requested = norm(model);
+  const candidates = (result?.candidates || []).map((c) => ({
+    ...c,
+    exact_match: requested ? norm(c.part_number) === requested : !!c.exact_match,
+  }));
   const exact = candidates.find((c) => c.exact_match);
 
   return (
