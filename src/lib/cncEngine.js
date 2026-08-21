@@ -65,6 +65,7 @@ export function calculate(input) {
   let woc, doc;
   let drilling = null;
   let deepHoleFeedFactor = 1;
+  let hemWocBounds = null; // {floorPct, ceilingPct} for the HP-driven WOC solve below
   if (op.docMode === "drill" || tt.isDrill) {
     // Peck-drilling cycle generation. G83 (full retract) for holes > 3×D;
     // G81 single plunge for shallow holes. Peck depth scales with material
@@ -117,18 +118,25 @@ export function calculate(input) {
     woc = diameter;
     doc = diameter * 0.1 * lerp(0.7, 1.2, agg);
   } else if (op.docMode === "hem") {
-    // High-Efficiency Machining / adaptive toolpaths: radial engagement now
-    // driven by material-class WOC targets (aluminum runs much wider stepovers
-    // than titanium/hardened steel at the same "aggressiveness" — see
-    // WOC_CLASS_TARGETS). Falls back to the operation's flat wocFactor for
-    // materials without a materialClass (e.g. legacy custom materials).
+    // High-Efficiency Machining / adaptive toolpaths. This is a provisional
+    // WOC from the material-class target table (aluminum runs much wider
+    // stepovers than titanium/hardened steel at the same "aggressiveness" —
+    // see WOC_CLASS_TARGETS). It gets REPLACED below by an HP-solved value
+    // once rpm/chip-load are known, unless the user pinned a radial load.
+    // Falls back to the operation's flat wocFactor for materials without a
+    // materialClass (e.g. legacy custom materials).
     const wocClass = mat.materialClass && WOC_CLASS_TARGETS[mat.materialClass];
     if (wocClass) {
       const [rMin, rMax] = op.finishing ? wocClass.finishPct : wocClass.roughPct;
       const pct = Math.min(wocClass.ceiling, lerp(rMin, rMax, agg));
       woc = diameter * pct;
+      // Safety band for the HP-driven solve: never go narrower than half the
+      // table's aggressiveness-0 target (chip-thinning gets extreme below
+      // that) or wider than the table's ceiling (chip evacuation / deflection).
+      hemWocBounds = { floorPct: rMin * 0.5, ceilingPct: wocClass.ceiling };
     } else {
       woc = diameter * op.wocFactor * lerp(0.8, 1.1, agg);
+      hemWocBounds = { floorPct: op.wocFactor * 0.4, ceilingPct: op.wocFactor * 1.1 };
     }
     doc = diameter * 2.0 * lerp(0.7, 1.2, agg);
   } else {
@@ -143,7 +151,8 @@ export function calculate(input) {
   // CAM-driven paths (HSMWorks 2D & 3D adaptive / rough / finish) hold a set radial
   // engagement; honor the user's set radial load and axial step-down. Axial DOC is
   // NOT capped to flute LOC — the toolpath steps down in multiple Z-passes.
-  if (op.adaptive && radialLoad && radialLoad > 0) woc = radialLoad;
+  const userPinnedWoc = !!(op.adaptive && radialLoad && radialLoad > 0);
+  if (userPinnedWoc) woc = radialLoad;
   if (op.docMode !== "drill" && !tt.isDrill && axialDoc && axialDoc > 0) doc = axialDoc;
 
   // Feature depth → number of axial passes and the actual per-pass stepdown.
@@ -152,6 +161,38 @@ export function calculate(input) {
     passes = Math.max(1, Math.ceil(featureDepth / doc));
     stepdown = featureDepth / passes;
     doc = stepdown; // actual per-pass depth never exceeds the feature depth
+  }
+
+  // --- HP-driven radial engagement (HEM/adaptive only) ---
+  // Manufacturer tool bots (IMCO ToolBot and similar) size the stepover by
+  // solving backward from the machine's available horsepower, not from a
+  // fixed percentage-of-diameter table — a 30 HP spindle gets a much wider
+  // cut than a 5 HP one on the same tool/material at the same aggressiveness.
+  // MRR(r) = r·D · doc · rpm · flutes · chipLoad_actual / sqrt(r - r^2), which
+  // solves in closed form for r given a target HP:
+  //   K = D · doc · rpm · flutes · chipLoad_actual / 2
+  //   target = (HP / hpFactor) / K
+  //   r = target^2 / (1 + target^2)
+  // The provisional percentage-table WOC stays in force (a) when the user
+  // pinned a radial load, (b) for non-HEM ops, or (c) when the machine has no
+  // HP figure — otherwise it's replaced by the HP-solved value, clamped to
+  // the table's floor/ceiling band as a chip-evacuation/deflection safety net.
+  let hpSolveNote = null;
+  if (op.docMode === "hem" && !userPinnedWoc && hemWocBounds && m.hp > 0 && doc > 0 && rpm > 0 && chipLoad > 0) {
+    const K = (diameter * doc * rpm * flutes * chipLoad) / 2;
+    if (K > 0) {
+      const target = (m.hp / mat.hpFactor) / K;
+      const rSolved = (target * target) / (1 + target * target);
+      const rClamped = clamp(rSolved, hemWocBounds.floorPct, hemWocBounds.ceilingPct);
+      woc = diameter * rClamped;
+      if (rSolved > hemWocBounds.ceilingPct) {
+        hpSolveNote = `Spindle has more than enough power for a full-width chip-evacuation-safe stepover — radial engagement capped at ${Math.round(hemWocBounds.ceilingPct * 100)}% of diameter instead of the HP-solved ${Math.round(rSolved * 100)}%.`;
+      } else if (rSolved < hemWocBounds.floorPct) {
+        hpSolveNote = `Available spindle power is tight for this tool/material/DOC combo — stepover reduced toward ${Math.round(hemWocBounds.floorPct * 100)}% of diameter and it may still be underpowered; consider a shallower axial DOC.`;
+      } else {
+        hpSolveNote = `Radial engagement (${Math.round(rClamped * 100)}% of diameter) solved from available spindle horsepower — this is how manufacturer tool bots size the stepover, not a fixed percentage.`;
+      }
+    }
   }
 
   // --- Feed multipliers from tool geometry ---
@@ -193,6 +234,7 @@ export function calculate(input) {
 
   // --- Warnings ---
   const warnings = [...thinningNotes];
+  if (hpSolveNote) warnings.push(hpSolveNote);
   if (hpRequired > m.hp) warnings.push(`Requires ~${hpRequired.toFixed(1)} HP but machine has ${m.hp} HP — reduce DOC/WOC or feed.`);
   if (rpmClamped) warnings.push(rpm > rpmIdeal ? `Spindle minimum forced RPM above ideal — reduce SFM or use smaller tool.` : `Spindle max RPM reached — ideal ${Math.round(rpmIdeal)} RPM. Increase SFM or use larger diameter.`);
   if (ipmClamped) warnings.push(`Machine max feed (${m.maxIpm} IPM) limits the programmed feed.`);
