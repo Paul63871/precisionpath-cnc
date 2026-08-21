@@ -113,13 +113,30 @@ export function calculate(input) {
     // materialClass (e.g. legacy custom materials).
     const wocClass = mat.materialClass && WOC_CLASS_TARGETS[mat.materialClass];
     if (wocClass) {
-      const [rMin, rMax] = op.finishing ? wocClass.finishPct : wocClass.roughPct;
-      const pct = Math.min(wocClass.ceiling, lerp(rMin, rMax, agg));
+      let [rMin, rMax] = op.finishing ? wocClass.finishPct : wocClass.roughPct;
+      let ceilingPct = wocClass.ceiling;
+      // Ball nose roughing/semi-finishing tolerates a wider radial stepover
+      // than a flat end mill's trochoidal/HEM clearing at the same "class"
+      // ceiling — the curved profile enters the cut gradually instead of
+      // full-width, so chip load and deflection stay manageable at a wider
+      // step. Moldmaking Technology (round-insert/ball-nose roughing guidance)
+      // puts typical radial stepovers at 25-40% of diameter for constant-Z
+      // roughing/semi-finishing, well above the ~10-20% ceiling tuned for
+      // flat-end-mill HEM clearing in WOC_CLASS_TARGETS. Only widen the
+      // non-finishing (roughing) band, and only up to that independently-
+      // sourced 25-40% range, scaled by how much headroom the material class
+      // has left below it (never narrows an already-wider class ceiling).
+      if (tt.id === "ball_end" && !op.finishing) {
+        rMin = Math.max(rMin, 0.25);
+        rMax = Math.max(rMax, 0.40);
+        ceilingPct = Math.max(ceilingPct, 0.40);
+      }
+      const pct = Math.min(ceilingPct, lerp(rMin, rMax, agg));
       woc = diameter * pct;
       // Safety band for the HP-driven solve: never go narrower than half the
       // table's aggressiveness-0 target (chip-thinning gets extreme below
       // that) or wider than the table's ceiling (chip evacuation / deflection).
-      hemWocBounds = { floorPct: rMin * 0.5, ceilingPct: wocClass.ceiling };
+      hemWocBounds = { floorPct: rMin * 0.5, ceilingPct };
     } else {
       woc = diameter * op.wocFactor * lerp(0.8, 1.1, agg);
       hemWocBounds = { floorPct: op.wocFactor * 0.4, ceilingPct: op.wocFactor * 1.1 };
@@ -141,21 +158,24 @@ export function calculate(input) {
   if (userPinnedWoc) woc = radialLoad;
   if (op.docMode !== "drill" && !tt.isDrill && axialDoc && axialDoc > 0) doc = axialDoc;
 
-  // Ball nose per-pass axial DOC cap. A ball nose has a full-radius curved
-  // profile, not a straight flute — the flat-end-mill "1.4-2×D per pass"
-  // logic above assumes a cylindrical shank cutting on its side and does not
-  // apply. Manufacturer ball-nose finisher data (e.g. Kennametal KDMB
-  // published max cutting depths) and general shop practice (Dapra: finishing
-  // ADOC ≤ 10% of ball diameter; Harvey/CNC Cookbook: light-roughing 3D work
-  // tops out well under 1×D) cap the practical per-pass axial engagement at a
-  // small fraction of diameter — roughly 10% for finishing ops, up to ~30% for
-  // roughing — regardless of what a flat-mill profile-depth factor would allow.
-  // This also keeps the effective-diameter correction below in its intended
-  // regime (shallow engagement near the tip), instead of silently reaching
-  // full-hemisphere engagement on a single "profile" pass sized for a flat tool.
-  if (tt.id === "ball_end" && op.docMode !== "drill" && !tt.isDrill) {
-    const ballDocCapPct = op.finishing ? 0.10 : 0.30;
-    doc = Math.min(doc, diameter * ballDocCapPct);
+  // Ball nose per-pass axial DOC cap — FINISHING OPERATIONS ONLY.
+  // IMCO's own published ball-nose adjustment guide (the same reference this
+  // calculator is benchmarked against) draws a hard line at 50% of diameter:
+  // below that, engagement is shallow/finishing-style and the effective-
+  // diameter correction below applies; at or above it, IMCO treats the cut as
+  // full-radius/slotting-style and uses the nominal diameter directly with no
+  // extra derate. Dapra's "finishing ADOC ≤ 10% of diameter" guidance is
+  // finishing-specific — it does not describe roughing or peripheral milling.
+  // For roughing/semi-finishing, Mitsubishi Materials states ap can run "up to
+  // 1×D", and Moldmaking Technology's 10%-of-diameter-per-pass rule only
+  // applies to hardened 30-40+ HRc material — it does not apply to structural/
+  // mild steel or aluminum. So: only finishing ops (2D/3D adaptive finish,
+  // pencil) get capped tight (10% of diameter, keeping them in the shallow-
+  // engagement regime the effective-diameter correction is meant for);
+  // roughing/contour ops are left to the existing feature-depth/passes and
+  // flute-LOC logic below, the same as any other tool type.
+  if (tt.id === "ball_end" && op.finishing && op.docMode !== "drill" && !tt.isDrill) {
+    doc = Math.min(doc, diameter * 0.10);
   }
 
   // Feature depth → number of axial passes and the actual per-pass stepdown.
