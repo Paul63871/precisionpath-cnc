@@ -1,6 +1,6 @@
 import {
   PART_MATERIALS, TOOL_MATERIALS, TOOL_MATERIAL_CLASS_MULT, COATINGS,
-  TOOL_TYPES, OPERATIONS, WOC_CLASS_TARGETS,
+  TOOL_TYPES, OPERATIONS, WOC_CLASS_TARGETS, PERIPHERAL_ROUGH_WOC_TARGETS,
   baseChipLoad, lerp, clamp,
 } from "./cncData";
 
@@ -142,6 +142,31 @@ export function calculate(input) {
       hemWocBounds = { floorPct: op.wocFactor * 0.4, ceilingPct: op.wocFactor * 1.1 };
     }
     doc = diameter * 2.0 * lerp(0.7, 1.2, agg);
+  } else if (op.peripheralRough) {
+    // Straight peripheral/contour ROUGHING (side-milling a wall/profile at
+    // full axial depth, not trochoidal). This gets the same material-class-
+    // aware, HP-solved WOC treatment as HEM roughing above, but pulled from
+    // PERIPHERAL_ROUGH_WOC_TARGETS instead of WOC_CLASS_TARGETS — a straight
+    // peripheral pass runs a materially wider stepover (30-50% of diameter,
+    // Harvey Performance) than trochoidal/HEM clearing (10-20%) because it
+    // doesn't get HEM's chip-thinning benefit at scale. Falls back to the
+    // op's flat wocFactor for materials without a materialClass.
+    const periphClass = mat.materialClass && PERIPHERAL_ROUGH_WOC_TARGETS[mat.materialClass];
+    if (periphClass) {
+      const [rMin, rMax] = periphClass.roughPct;
+      const pct = Math.min(periphClass.ceiling, lerp(rMin, rMax, agg));
+      woc = diameter * pct;
+      hemWocBounds = { floorPct: rMin * 0.5, ceilingPct: periphClass.ceiling };
+    } else {
+      woc = diameter * op.wocFactor * lerp(0.8, 1.1, agg);
+      hemWocBounds = { floorPct: op.wocFactor * 0.4, ceilingPct: op.wocFactor * 1.1 };
+    }
+    // Profile (side-milling) axial depth. Cap at 2×D per published ceilings
+    // (CGS Tool, Helical/Harvey HEM, Sandvik trochoidal, Autodesk Fusion all
+    // publish 1.5-2×D ceilings) unless radial engagement is very light (<10% of
+    // diameter), where a long-flute tool can safely go deeper.
+    const profCap = (woc / diameter) < 0.10 ? mat.profileDepthFactor : Math.min(mat.profileDepthFactor, 2.0);
+    doc = diameter * profCap * tt.docMult * lerp(0.6, 1.0, agg);
   } else {
     woc = diameter * op.wocFactor * lerp(0.8, 1.1, agg);
     // Profile (side-milling) axial depth. Cap at 2×D per published ceilings
@@ -283,7 +308,11 @@ export function calculate(input) {
   // no meaningful closed-form solution (it would collapse WOC toward zero).
   let hpSolveNote = null;
   const hpUtilizationTarget = lerp(0.20, 1.0, agg);
-  if (op.docMode === "hem" && !userPinnedWoc && hemWocBounds && hpAtCutter > 0 && doc > 0 && rpm > 0 && chipLoad > 0) {
+  // Applies to HEM/adaptive roughing AND straight peripheral-roughing profile
+  // ops (op.peripheralRough) — both populate hemWocBounds above and both want
+  // the WOC traded against available HP the same way. Fixed-stepover profile
+  // ops (finishing, thread, engrave) leave hemWocBounds null and skip this.
+  if ((op.docMode === "hem" || op.peripheralRough) && !userPinnedWoc && hemWocBounds && hpAtCutter > 0 && doc > 0 && rpm > 0 && chipLoad > 0) {
     const hpTarget = hpAtCutter * hpUtilizationTarget;
     const K = (diameter * doc * rpm * flutes * chipLoad) / 2;
     if (K > 0) {

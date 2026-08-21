@@ -203,7 +203,18 @@ export const OPERATIONS = [
   { id: "2d_adaptive_rough", name: "2D Adaptive Clearing (Rough)", category: "2D", sfmMult: 1.0, chipMult: 1.1, feedMult: 1.0, wocFactor: 0.15, docMode: "hem", adaptive: true },
   { id: "2d_adaptive_finish", name: "2D Adaptive Finishing", category: "2D", sfmMult: 1.1, chipMult: 0.8, feedMult: 1.0, wocFactor: 0.04, docMode: "hem", adaptive: true, finishing: true },
   { id: "2d_pocket", name: "2D Pocket", category: "2D", sfmMult: 1.0, chipMult: 1.0, feedMult: 1.0, wocFactor: 0.3, docMode: "hem", adaptive: true },
-  { id: "2d_contour", name: "2D Contour", category: "2D", sfmMult: 1.1, chipMult: 0.7, feedMult: 1.0, wocFactor: 0.08, docMode: "profile", adaptive: true },
+  // 2D Contour / peripheral (side) milling splits into rough and finish, same
+  // as adaptive clearing above — it is a genuine wall/profile-following pass
+  // that gets used for BOTH heavy stock removal and final wall finishing, not
+  // just light finishing. Per Harvey Performance's "Diving Into the Depth of
+  // Cut" (manufacturer-authored): peripheral milling finishing runs ~3-5% of
+  // diameter radially; heavy roughing runs 30-50%. Fictiv, JLCCNC, and
+  // several independent shop guides converge on the same rough 40-60% /
+  // finish 5-20% bands. `peripheralRough: true` routes this op through the
+  // same WOC_CLASS_TARGETS material-class-aware HP-solve that adaptive/HEM
+  // roughing already uses (cncEngine.js), instead of a bare fixed wocFactor.
+  { id: "2d_contour_rough", name: "2D Contour / Peripheral (Rough)", category: "2D", sfmMult: 1.0, chipMult: 1.0, feedMult: 1.0, wocFactor: 0.35, docMode: "profile", adaptive: true, peripheralRough: true },
+  { id: "2d_contour_finish", name: "2D Contour / Peripheral (Finish)", category: "2D", sfmMult: 1.1, chipMult: 0.7, feedMult: 1.0, wocFactor: 0.08, docMode: "profile", adaptive: true, finishing: true },
   { id: "facing", name: "Face", category: "2D", sfmMult: 0.95, chipMult: 1.0, feedMult: 1.0, wocFactor: 1.0, docMode: "face", adaptive: false },
   { id: "slotting", name: "Slot", category: "2D", sfmMult: 0.8, chipMult: 1.0, feedMult: 1.0, wocFactor: 1.0, docMode: "slot", adaptive: false, slotDerate: true },
   { id: "bore", name: "Circular / Bore", category: "2D", sfmMult: 0.8, chipMult: 1.0, feedMult: 1.0, wocFactor: 1.0, docMode: "slot", adaptive: false, slotDerate: true },
@@ -243,6 +254,34 @@ export const WOC_CLASS_TARGETS = {
   wood:             { roughPct: [0.20, 0.35], finishPct: [0.05, 0.08], ceiling: 0.40 },
   plastic:          { roughPct: [0.15, 0.30], finishPct: [0.05, 0.08], ceiling: 0.35 },
   composite:        { roughPct: [0.10, 0.20], finishPct: [0.05, 0.08], ceiling: 0.20 },
+};
+
+// Radial engagement targets for STRAIGHT PERIPHERAL/CONTOUR roughing (climb-
+// milling a wall or profile at full axial depth, non-trochoidal) — deliberately
+// wider than WOC_CLASS_TARGETS above, which is tuned for HEM/adaptive trochoidal
+// clearing that relies on chip-thinning at tight radial engagement + high feed.
+// A straight peripheral pass doesn't get that chip-thinning benefit at scale, so
+// shops run it at a materially wider stepover instead. Source: Harvey
+// Performance's "Diving Into the Depth of Cut" (manufacturer-authored) states
+// peripheral-milling heavy roughing runs 30-50% of diameter across materials,
+// vs. 3-5% for peripheral finishing; multiple independent shop/CAM guides
+// (Fictiv, JLCCNC, ScienceInsights, RongFu, CalculatorHub) converge on a general
+// 40-60% roughing / 5-20% finishing band for flat/bull end mills. Per-material
+// spread here follows the same relative hardness/toughness ordering as
+// WOC_CLASS_TARGETS (aluminum widest, superalloy/titanium narrowest) scaled up
+// into Harvey's 30-50% peripheral-roughing envelope.
+export const PERIPHERAL_ROUGH_WOC_TARGETS = {
+  aluminum:        { roughPct: [0.40, 0.50], ceiling: 0.50 },
+  nonferrous_soft: { roughPct: [0.35, 0.45], ceiling: 0.45 },
+  steel_mild:      { roughPct: [0.30, 0.45], ceiling: 0.45 },
+  steel_alloy:     { roughPct: [0.25, 0.40], ceiling: 0.40 },
+  stainless:       { roughPct: [0.20, 0.35], ceiling: 0.35 },
+  cast_iron:       { roughPct: [0.25, 0.40], ceiling: 0.40 },
+  titanium:        { roughPct: [0.10, 0.20], ceiling: 0.20 },
+  superalloy:      { roughPct: [0.08, 0.15], ceiling: 0.15 },
+  wood:             { roughPct: [0.40, 0.55], ceiling: 0.55 },
+  plastic:          { roughPct: [0.35, 0.50], ceiling: 0.50 },
+  composite:        { roughPct: [0.25, 0.40], ceiling: 0.40 },
 };
 
 // Base chip load per tooth (inches) for METALS — the actual chip thickness a
