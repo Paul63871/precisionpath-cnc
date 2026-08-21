@@ -30,7 +30,7 @@ export default function ResultsPanel({ result, units = "imperial" }) {
         <Metric icon={Activity} label="Feed Rate" value={feedFromImp(result.ipm, units).toLocaleString(undefined, { maximumFractionDigits: 1 })} unit={u.feed} accent="text-amber-600" />
         <Metric icon={Layers} label="Axial DOC" value={fmt(lenFromImp(result.doc, units), 2)} unit={u.length} />
         <Metric icon={Ruler} label="Radial WOC" value={fmt(lenFromImp(result.woc, units), 3)} unit={u.length} />
-        <Metric icon={TrendingUp} label="Chip Load" value={fmt(lenFromImp(result.chipLoad, units), 4)} unit={`${u.length}/tooth`} />
+        <Metric icon={TrendingUp} label="Feed/Tooth" value={fmt(lenFromImp(result.programmedFpt ?? result.chipLoad, units), 4)} unit={`${u.length}/tooth`} />
         <Metric icon={Zap} label="Power" value={fmt(power, 2)} unit={`/ ${fmt(powerAvail, 1)} ${u.power}`} accent={hpColor} />
       </div>
       {result.adaptive && (
@@ -44,6 +44,9 @@ export default function ResultsPanel({ result, units = "imperial" }) {
         </div>
         <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
           <span>Material Removal Rate</span><span className="font-mono">{fmt(mrrFromImp(result.mrr, units), 1)} {u.mrr}</span>
+        </div>
+        <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
+          <span>Chip Thickness</span><span className="font-mono">{fmt(lenFromImp(result.chipLoad, units), 4)} {u.length}</span>
         </div>
         {result.passes != null && (
           <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">

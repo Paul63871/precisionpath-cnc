@@ -96,12 +96,15 @@ export function calculate(input) {
     feedMult *= 1 / Math.sin(la * Math.PI / 180);
     thinningNotes.push(`Lead-angle chip thinning (${la}°) applied — feed raised to hold chip thickness.`);
   }
-  // Radial chip thinning for partial-width face/roughing cuts.
+  // Radial chip thinning for partial-width (Ae < D/2) cuts. Standard 90°-cutter
+  // RCTF: 1 / sqrt(1 - (1 - 2*Ae/D)^2). (The simplified 1/sqrt(Ae/D) over-states
+  // the factor by ~2x and is incorrect — it does not match manufacturer output.)
   let radialThinningFactor = 1;
   if (op.adaptive && woc > 0 && woc < diameter * 0.5) {
-    radialThinningFactor = 1 / Math.sqrt(woc / diameter);
+    const ratio = Math.min(0.5, woc / diameter);
+    radialThinningFactor = 1 / Math.sqrt(1 - Math.pow(1 - 2 * ratio, 2));
     feedMult *= radialThinningFactor;
-    thinningNotes.push(`Radial chip thinning applied (${radialThinningFactor.toFixed(2)}× feed) — feed increased to maintain chip thickness.`);
+    thinningNotes.push(`Radial chip thinning applied (${radialThinningFactor.toFixed(2)}× feed) — feed increased to hold chip thickness at ${Math.round(ratio * 100)}% radial engagement.`);
   }
 
   // --- Feed (IPM) ---
@@ -130,10 +133,17 @@ export function calculate(input) {
   if (mat.category === "Stainless" || mat.category === "Titanium" || mat.category === "Superalloy") warnings.push("Work hardening / heat-sensitive alloy — keep chip load up, avoid rubbing, use coolant or air.");
   if (mat.id === "cfrp" || mat.id === "g10") warnings.push("Abrasive composite — expect rapid tool wear; diamond-coated carbide recommended.");
 
+  // Programmed feed per tooth = table feed / (rpm × flutes). This is the value
+  // entered in CAM; it exceeds the actual chip thickness whenever chip thinning applies.
+  const programmedFpt = (op.docMode === "drill" || tt.isDrill || !flutes || flutes <= 0 || rpm <= 0)
+    ? null
+    : ipm / (rpm * flutes);
+
   return {
     sfm: Math.round(sfm),
     rpm: Math.round(rpm),
     chipLoad: Number(chipLoad.toFixed(5)),
+    programmedFpt: programmedFpt != null ? Number(programmedFpt.toFixed(5)) : null,
     ipm: Number(ipm.toFixed(1)),
     woc: Number(woc.toFixed(3)),
     doc: Number(doc.toFixed(3)),
