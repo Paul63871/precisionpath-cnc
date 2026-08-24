@@ -265,8 +265,17 @@ export function calculate(input) {
   rpm = clamp(rpm, m.minRpm, m.maxRpm);
   const rpmClamped = Math.abs(rpm - rpmIdeal) > 0.5;
 
-  // --- Chip load per tooth ---
-  const chipCurve = mat.chipCurve === "soft" ? "soft" : "metal";
+  // --- Chip load per tooth (or feed per revolution for drilling) ---
+  // Drilling uses a dedicated feed-per-REVOLUTION curve (CHIP_LOAD_TABLE_DRILL)
+  // rather than the end-mill per-tooth table: a twist drill's programmed feed
+  // in cncEngine's IPM formula below is rpm * chipLoad with no flute
+  // multiplier, so "chipLoad" here must already represent a full revolution's
+  // advance, not one tooth's bite — the two quantities differ by roughly
+  // 2.5-3x at the same diameter (see cncData.js CHIP_LOAD_TABLE_DRILL comment
+  // for manufacturer sourcing). mat.chipLoadFactor still applies on top, same
+  // as milling, to scale for material hardness.
+  const isDrillOp = op.docMode === "drill" || tt.isDrill;
+  const chipCurve = isDrillOp ? "drill" : mat.chipCurve === "soft" ? "soft" : "metal";
   let chipLoad;
   if (override?.chipLoad) {
     chipLoad = override.chipLoad * op.chipMult * lerp(0.8, 1.0, agg);

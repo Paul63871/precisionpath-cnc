@@ -31,7 +31,7 @@ export default function ResultsPanel({ result, units = "imperial" }) {
         <Metric icon={Activity} label="Feed Rate" value={feedFromImp(result.ipm, units).toLocaleString(undefined, { maximumFractionDigits: 1 })} unit={u.feed} accent="text-brand" />
         <Metric icon={Layers} label="Axial DOC" value={fmt(lenFromImp(result.doc, units), 2)} unit={u.length} />
         <Metric icon={Ruler} label="Radial WOC" value={fmt(lenFromImp(result.woc, units), 3)} unit={u.length} />
-        <Metric icon={TrendingUp} label="Feed/Tooth" value={fmt(lenFromImp(result.programmedFpt ?? result.chipLoad, units), 4)} unit={`${u.length}/tooth`} />
+        <Metric icon={TrendingUp} label={result.drilling ? "Feed/Rev" : "Feed/Tooth"} value={fmt(lenFromImp(result.programmedFpt ?? result.chipLoad, units), 4)} unit={result.drilling ? `${u.length}/rev` : `${u.length}/tooth`} />
         <Metric icon={Zap} label="Power" value={fmt(power, 2)} unit={`/ ${fmt(powerAvail, 1)} ${u.power}`} accent={hpColor} />
       </div>
       {result.adaptive && (

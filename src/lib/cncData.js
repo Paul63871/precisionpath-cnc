@@ -335,6 +335,43 @@ const CHIP_LOAD_TABLE_SOFT = [
   [1.0, 0.0150],
 ];
 
+// Base feed per REVOLUTION (inches) for DRILLING, at the aluminum/soft-metal
+// baseline (scaled down for harder materials by the same mat.chipLoadFactor
+// already used for milling). The end-mill per-TOOTH table above is the wrong
+// physical quantity for a drill's feed formula (rpm * chipLoad, no flute
+// multiplier — see cncEngine.js) — reusing it silently returned an end-mill
+// per-tooth chip thickness as if it were a drill's per-revolution advance,
+// underfeeding every drilling calculation in the app by roughly 2.5-3x
+// relative to manufacturer drill feed charts. This table is the central
+// tendency of general/medium-cut IPR-by-diameter charts, cross-checked at the
+// aluminum baseline (chipLoadFactor 1.0) and at A36/304-stainless scaling:
+// Redline Tools cobalt & HSS drill feed charts (redlinetools.com/customer/docs/SKUDocs/Drill-Cobalt-HSS-Speeds-Feeds-p340.pdf,
+// redlinetools.com/customer/docs/RedLineToolsDrillsTechInfo.pdf),
+// Norseman Drill (norsemandrill.com/feeds-speeds-drill.php),
+// ProtoCutter light-metals feed table (protocutter.com/feed-rates-light-metals),
+// University of Florida EML2322L drilling speeds/feeds (web.mae.ufl.edu/designlab/lab%20assignments/eml2322l-drilling%20and%20milling%20speeds%20and%20feeds.pdf),
+// Tru-Edge solid carbide drill feeds incl. per-material IPR (tru-edge.com/wp-content/uploads/2019/11/Feeds-and-Speeds-Drills.pdf),
+// Rock River Tool drilling speeds & feeds (rockrivertool.com/wp-content/uploads/2024/05/drilling-speeds-and-feeds-rrt.pdf),
+// CarbideDepot HSS twist drill feed table (carbidedepot.com/formulas-drills-speeds.htm),
+// Morse HSS & Cobalt drill speed/feed recommendations (cuttingtoolsales.com/wp-content/uploads/2015/11/Morse_Drills_Speeds.pdf).
+const CHIP_LOAD_TABLE_DRILL = [
+  [0.03125, 0.0010],
+  [0.0625, 0.0015],
+  [0.09375, 0.0018],
+  [0.125, 0.0022],
+  [0.1875, 0.0035],
+  [0.25, 0.0050],
+  [0.3125, 0.0060],
+  [0.375, 0.0070],
+  [0.5, 0.0090],
+  [0.625, 0.0110],
+  [0.75, 0.0130],
+  [1.0, 0.0170],
+  [1.25, 0.0220],
+  [1.5, 0.0280],
+  [2.0, 0.0350],
+];
+
 function interpTable(table, d) {
   const dmin = table[0][0], dmax = table[table.length - 1][0];
   const dc = Math.max(dmin, Math.min(dmax, d));
@@ -350,7 +387,7 @@ function interpTable(table, d) {
 }
 
 export function baseChipLoad(diameter, curve = "metal") {
-  const table = curve === "soft" ? CHIP_LOAD_TABLE_SOFT : CHIP_LOAD_TABLE_METAL;
+  const table = curve === "drill" ? CHIP_LOAD_TABLE_DRILL : curve === "soft" ? CHIP_LOAD_TABLE_SOFT : CHIP_LOAD_TABLE_METAL;
   return interpTable(table, diameter);
 }
 
