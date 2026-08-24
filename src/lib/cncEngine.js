@@ -450,7 +450,13 @@ export function calculate(input) {
     ipm: Number(ipm.toFixed(1)),
     woc: Number(woc.toFixed(3)),
     doc: Number(doc.toFixed(3)),
-    mrr: Number(mrr.toFixed(2)),
+    // Light-engagement ops (engrave, thread milling, pencil finishing, tiny
+    // slitting-saw kerfs) legitimately remove well under 0.01 in3/min — a
+    // fixed 2-decimal round was displaying those correct, nonzero MRR values
+    // as a flat "0.00", which reads as a broken calculation even though the
+    // underlying number is physically right. Use 4 decimals below 0.01 so
+    // small-but-real removal rates stay visible instead of rounding to zero.
+    mrr: Number(mrr.toFixed(mrr < 0.01 ? 4 : 2)),
     hpRequired: Number(hpRequired.toFixed(2)),
     hpAvailable: m.hp,
     hpUtilization: Math.min(100, Math.round((hpRequired / hpAtCutter) * 100)),

@@ -38,7 +38,13 @@ export const PART_MATERIALS = [
     sfmRange: [220, 450], chipLoadFactor: 0.7, hpFactor: 0.70,
     slotDepthFactor: 0.7, profileDepthFactor: 2.0 },
   { id: "steel_1018", name: "Mild Steel 1018", category: "Steel", materialClass: "steel_mild",
-    sfmRange: [350, 600], chipLoadFactor: 0.62, hpFactor: 1.60,
+    // hpFactor 1.40: Machinery's Handbook Kp for 180-200 HB plain carbon steel
+    // (0.82 unit power -> ~1.47 spindle-level) and Michigan Drill's <=150 BHN
+    // steel factor (1.43) both bracket 1.40-1.47; 1.60 (a prior, uncited edit)
+    // overstated cutting power needed by ~14-20% vs these sources.
+    // https://theswissbay.ch/pdf/Books/Survival/Workshop/Machining%20and%20Machinery/Machinery's%20Handbook%20(27.8)/26663_yh.pdf
+    // https://michigandrill.com/catalog/technical_data_milling_calcs.php
+    sfmRange: [350, 600], chipLoadFactor: 0.62, hpFactor: 1.40,
     slotDepthFactor: 0.5, profileDepthFactor: 1.5 },
   { id: "steel_1045", name: "Medium Carbon Steel 1045", category: "Steel", materialClass: "steel_mild",
     sfmRange: [300, 500], chipLoadFactor: 0.56, hpFactor: 1.71,
@@ -47,7 +53,13 @@ export const PART_MATERIALS = [
     sfmRange: [250, 450], chipLoadFactor: 0.58, hpFactor: 1.75,
     slotDepthFactor: 0.4, profileDepthFactor: 1.2 },
   { id: "steel_a36", name: "A36 Structural Steel", category: "Steel", materialClass: "steel_mild",
-    sfmRange: [350, 600], chipLoadFactor: 0.62, hpFactor: 1.60,
+    // hpFactor 1.38: Machinery's Handbook Kp for 140-160 HB steel (0.74 unit
+    // power -> ~1.32 spindle-level) and Michigan Drill's <=150 BHN factor
+    // (1.43) bracket 1.32-1.43; A36 is softer than 1018-CD so it should sit
+    // at or below 1018's 1.40, not above it at the prior uncited 1.60.
+    // https://theswissbay.ch/pdf/Books/Survival/Workshop/Machining%20and%20Machinery/Machinery's%20Handbook%20(27.8)/26663_yh.pdf
+    // https://michigandrill.com/catalog/technical_data_milling_calcs.php
+    sfmRange: [350, 600], chipLoadFactor: 0.62, hpFactor: 1.38,
     slotDepthFactor: 0.48, profileDepthFactor: 1.4 },
   { id: "steel_a572", name: "A572 Gr 50 Steel", category: "Steel", materialClass: "steel_mild",
     sfmRange: [300, 550], chipLoadFactor: 0.58, hpFactor: 1.77,
