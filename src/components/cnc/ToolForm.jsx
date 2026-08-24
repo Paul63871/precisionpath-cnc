@@ -1,7 +1,7 @@
 import React from "react";
 import { Label } from "@/components/ui/label";
 import ResponsiveSelect from "@/components/cnc/ResponsiveSelect";
-import { TOOL_TYPES, TOOL_MATERIALS, COATINGS, FIELD_DEFS, THREAD_TABLE, TAP_STYLES } from "@/lib/cncData";
+import { TOOL_TYPES, TOOL_MATERIALS, COATINGS, FIELD_DEFS, THREAD_TABLE, TAP_STYLES, HOLE_TYPES } from "@/lib/cncData";
 import { UNITS, lenFromImp, lenToImp } from "@/lib/units";
 import NumberField from "@/components/NumberField";
 
@@ -46,7 +46,28 @@ export default function ToolForm({ value, onChange, units = "imperial" }) {
         </div>
       );
     }
+    if (def.kind === "holeType") {
+      return (
+        <div key={key} className="space-y-1.5 col-span-3">
+          <Label className="text-xs text-muted-foreground">{def.label}</Label>
+          <ResponsiveSelect
+            value={value.holeType || "through"}
+            onValueChange={(v) => {
+              // Auto-suggest the matching tap style when the hole type changes,
+              // so a spiral-point tap doesn't stay selected for a blind hole
+              // by default — the user can still override it afterward.
+              const current = TAP_STYLES.find((s) => s.id === value.tapStyle);
+              const stillFits = current && current.holeFit.includes(v);
+              const suggested = v === "blind" ? "spiral_flute" : "spiral_point";
+              onChange({ ...value, holeType: v, tapStyle: stillFits ? value.tapStyle : suggested });
+            }}
+            options={HOLE_TYPES.map((h) => ({ value: h.id, label: h.name }))}
+          />
+        </div>
+      );
+    }
     if (def.kind === "tapStyle") {
+      const mismatch = value.holeType === "blind" && value.tapStyle === "spiral_point";
       return (
         <div key={key} className="space-y-1.5 col-span-3">
           <Label className="text-xs text-muted-foreground">{def.label}</Label>
@@ -55,6 +76,9 @@ export default function ToolForm({ value, onChange, units = "imperial" }) {
             onValueChange={(v) => set("tapStyle", v)}
             options={TAP_STYLES.map((t) => ({ value: t.id, label: t.name }))}
           />
+          {mismatch && (
+            <p className="text-xs text-destructive pt-0.5">Spiral point taps push chips forward — not for blind holes. Pick Spiral Flute or Forming/Roll instead.</p>
+          )}
         </div>
       );
     }

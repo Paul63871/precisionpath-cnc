@@ -1,7 +1,7 @@
 import {
   PART_MATERIALS, TOOL_MATERIALS, TOOL_MATERIAL_CLASS_MULT, COATINGS,
   TOOL_TYPES, OPERATIONS, WOC_CLASS_TARGETS, PERIPHERAL_ROUGH_WOC_TARGETS,
-  TAP_SFM_BY_CLASS, TAP_TOOL_MATERIAL_MULT, TAP_STYLES, THREAD_TABLE,
+  TAP_SFM_BY_CLASS, TAP_TOOL_MATERIAL_MULT, TAP_STYLES, HOLE_TYPES, THREAD_TABLE,
   baseChipLoad, lerp, clamp,
 } from "./cncData";
 
@@ -15,7 +15,7 @@ export function calculate(input) {
     diameter, flutes, loc, toolMaterialId, coatingId, toolTypeId,
     material, materialId, operationId, aggressiveness = 0.6, machine, override,
     leadAngle, cornerRadius, includedAngle, tipDiameter, thickness, neckDiameter, pointAngle,
-    radialLoad, axialDoc, featureDepth, threadId, tapStyle,
+    radialLoad, axialDoc, featureDepth, threadId, tapStyle, holeType,
   } = input;
 
   const mat = material || PART_MATERIALS.find((m) => m.id === materialId) || PART_MATERIALS[0];
@@ -57,10 +57,31 @@ export function calculate(input) {
     const tapMajor = thread.major != null ? thread.major : diameter;
     const pitch = thread.pitch != null ? thread.pitch : input.pitch;
     const style = TAP_STYLES.find((s) => s.id === tapStyle) || TAP_STYLES[0];
+    const hole = HOLE_TYPES.find((h) => h.id === holeType) || HOLE_TYPES[0];
 
     const warnings = [];
     if (!pitch || pitch <= 0) {
       warnings.push("No thread pitch known — select a thread size or enter a custom pitch/TPI.");
+    }
+    // --- Hole type / chip direction mismatch check ---
+    // This is the #1 real-world tapping failure: a spiral point (gun) tap
+    // drives chips FORWARD with nowhere to go in a blind hole, packs at the
+    // bottom, and jams or snaps the tap. A straight-flute tap just stores
+    // chips in the flute gullets, so it runs out of chip capacity well
+    // before typical blind-hole depths (~1.5xD). Spiral flute (pulls chips
+    // back out) and forming/roll (no chip at all) are safe in either hole
+    // type. Sources: Cutronix spiral point/flute/forming guide ("Never [use
+    // spiral point] in a blind hole... the single most common tapping
+    // failure" — cutronix.com.au/blog/metal-cutting-basics-1/spiral-point-vs-spiral-flute-taps-which-to-use-when-and-why-8),
+    // Cutwel spiral point vs spiral flute guide (cutwel.co.uk/blog/spiral-point-taps-vs-spiral-flute-taps),
+    // OPT Cutting Tools on straight-flute depth limits in blind holes
+    // (optcuttingtools.com/news/what-is-the-advantage-of-a-spiral-flute-tap-vs-a-straight-flute-tap-when-tapping-a-blind-hole/).
+    if (hole.id === "blind" && style.id === "spiral_point") {
+      warnings.push("Tap style mismatch: a Spiral Point (gun) tap pushes chips FORWARD, ahead of the tap — in a blind hole they have nowhere to go and pack at the bottom, jamming or breaking the tap. Switch to a Spiral Flute tap (pulls chips back out) or a Forming/Roll tap (no chip at all) for this blind hole.");
+    } else if (hole.id === "blind" && style.id === "straight_flute") {
+      warnings.push("Tap style caution: a Straight Flute tap stores chips in the flute gullets instead of evacuating them — in blind holes this limits safe thread depth to roughly 1.5× diameter before the flutes pack solid. A Spiral Flute tap is the safer choice for deeper blind holes.");
+    } else if (hole.id === "through" && style.id === "spiral_flute") {
+      warnings.push("Note: a Spiral Flute tap works fine in a through-hole, but a Spiral Point (gun) tap is the faster, stronger, more common choice when chips can exit freely out the far side.");
     }
 
     // --- Surface speed (SFM) --- HSS cut-tap baseline by material class,
@@ -107,7 +128,10 @@ export function calculate(input) {
       cycle: "G84",
       notes: [],
     };
+    tapping.holeType = hole.id;
+    tapping.chipDirection = style.chipDirection;
     if (loc && threadDepth > loc) tapping.notes.push(`Thread depth exceeds flute LOC (${loc}") — verify the tap's chamfer/flute length can reach full depth.`);
+    if (hole.id === "blind" && style.id === "straight_flute" && depthRatio > 1.5) tapping.notes.push(`Blind-hole depth is ${depthRatio.toFixed(1)}×D — beyond the ~1.5×D chip-storage limit of a straight-flute tap at this diameter.`);
     if (mat.category === "Stainless" || mat.category === "Titanium" || mat.category === "Superalloy") tapping.notes.push("Work-hardening / heat-sensitive alloy — use cobalt or coated tap, keep speed down, flood coolant or tapping fluid.");
     if (style.id === "forming" && (mat.category === "Cast Iron" || mat.category === "Iron")) tapping.notes.push("Forming/roll taps are not recommended in cast iron — the material doesn't deform ductilely enough to form a clean thread.");
     if (style.note) tapping.notes.push(style.note);

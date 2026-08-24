@@ -188,7 +188,7 @@ export const TOOL_TYPES = [
   { id: "chamfer", name: "Chamfer / V-Bit", sfmMult: 1.0, chipMult: 0.8, docMult: 0.6, isDrill: false, countField: "flutes", fields: ["flutes", "loc", "includedAngle", "tipDiameter"] },
   { id: "face_mill", name: "Face Mill (Indexable)", sfmMult: 1.0, chipMult: 1.1, docMult: 0.5, isDrill: false, countField: "inserts", fields: ["inserts", "loc", "leadAngle"] },
   { id: "drill", name: "Drill", sfmMult: 1.0, chipMult: 1.0, docMult: 1.0, isDrill: true, countField: "flutes", fields: ["flutes", "pointAngle", "loc"] },
-  { id: "tap", name: "Tap", sfmMult: 1.0, chipMult: 1.0, docMult: 1.0, isDrill: false, isTap: true, countField: "flutes", fields: ["threadId", "tapStyle", "flutes", "loc"] },
+  { id: "tap", name: "Tap", sfmMult: 1.0, chipMult: 1.0, docMult: 1.0, isDrill: false, isTap: true, countField: "flutes", fields: ["threadId", "holeType", "tapStyle", "flutes", "loc"] },
   { id: "slitting_saw", name: "Slitting Saw", sfmMult: 0.9, chipMult: 0.8, docMult: 1.0, isDrill: false, countField: "flutes", fields: ["flutes", "thickness"] },
   { id: "t_slot", name: "T-Slot Cutter", sfmMult: 0.95, chipMult: 0.9, docMult: 1.0, isDrill: false, countField: "flutes", fields: ["flutes", "neckDiameter"] },
 ];
@@ -206,6 +206,7 @@ export const FIELD_DEFS = {
   thickness: { label: "Thickness", kind: "length", step: 0.001 },
   neckDiameter: { label: "Neck Diameter", kind: "length", step: 0.001 },
   threadId: { label: "Thread Size", kind: "thread" },
+  holeType: { label: "Hole Type", kind: "holeType" },
   tapStyle: { label: "Tap Style", kind: "tapStyle" },
 };
 
@@ -351,19 +352,49 @@ export const TAP_TOOL_MATERIAL_MULT = {
   cobalt: 1.4,
 };
 
-// Tap style multipliers/notes. Spiral-point (gun-nose) taps push chips ahead
-// (best for through-holes); spiral-flute taps pull chips up and out (best for
-// blind holes); straight-flute taps leave chips in the flute (best with
-// interrupted cuts / brass); forming/roll taps displace material with no chip
-// at all and can run faster with less torque since there's no cutting action.
-// Source: general tooling-vendor guidance (Viking Drill, Slugger Tool, Fuller
-// Fasteners tap-style guides) — consistent across sources, no single numeric
-// citation needed beyond the style descriptions themselves.
+// Tap style multipliers/notes/chip direction. This is the single most
+// important tap-selection decision after diameter/pitch: get the chip
+// direction wrong for the hole type and the tap jams or breaks.
+//   - Spiral point (gun/gun-nose): angled gash at the chamfer drives chips
+//     FORWARD, ahead of the tap, out the far side. Through-holes ONLY — in a
+//     blind hole the chips have nowhere to go and pack at the bottom.
+//   - Spiral flute: helical flutes pull chips BACKWARD, up and out through
+//     the hole entrance, like a drill in reverse. Made for blind holes;
+//     works in through-holes too but usually not necessary there.
+//   - Straight flute: no helix, chips are simply stored in the flute
+//     gullets. Depth-limited (~1.5xD) in blind holes since the flutes fill
+//     up; fine for through-holes, brass, or interrupted cuts (keyways).
+//   - Forming/roll: no chip produced at all (material is cold-formed into
+//     the thread), so hole type is a non-issue — works in either, but only
+//     in ductile materials (aluminum, mild steel, copper/brass — NOT cast
+//     iron or anything that doesn't flow plastically).
+// chipDirection: "forward" | "backward" | "stored" | "none" — used by the
+// engine to flag a hole-type / tap-style mismatch.
+// holeFit: which holeType values this style is well-suited to.
+// Sources: GWS Tool Group tap style/chip management guide
+// (gwstoolgroup.com/tap-style-selections-by-chip-management/), Cutronix
+// spiral point vs spiral flute vs forming taps guide
+// (cutronix.com.au/blog/metal-cutting-basics-1/spiral-point-vs-spiral-flute-taps-which-to-use-when-and-why-8)
+// — "Never [use spiral point] in a blind hole... the single most common
+// tapping failure", Cutwel spiral point vs spiral flute guide
+// (cutwel.co.uk/blog/spiral-point-taps-vs-spiral-flute-taps), Travers Tool
+// spiral pointed vs fluted guide
+// (solutions.travers.com/metalworking-machining/threading/spiral-pointed-spiral-fluted-taps-which-when),
+// OPT Cutting Tools on straight-flute depth limits in blind holes
+// (optcuttingtools.com/news/what-is-the-advantage-of-a-spiral-flute-tap-vs-a-straight-flute-tap-when-tapping-a-blind-hole/).
 export const TAP_STYLES = [
-  { id: "spiral_point", name: "Spiral Point (Gun Nose)", sfmMult: 1.0, note: "Pushes chips ahead — use for through-holes." },
-  { id: "spiral_flute", name: "Spiral Flute", sfmMult: 0.95, note: "Pulls chips out the top — use for blind holes." },
-  { id: "straight_flute", name: "Straight Flute", sfmMult: 0.85, note: "Chips stay in the flute — best for brass or interrupted cuts." },
-  { id: "forming", name: "Forming / Roll Tap", sfmMult: 1.2, note: "Displaces material, no chip — runs faster, needs more torque, no coolant/chip concerns." },
+  { id: "spiral_point", name: "Spiral Point (Gun Nose)", sfmMult: 1.0, chipDirection: "forward", holeFit: ["through"], note: "Pushes chips forward, ahead of the tap — through-holes only." },
+  { id: "spiral_flute", name: "Spiral Flute", sfmMult: 0.95, chipDirection: "backward", holeFit: ["blind", "through"], note: "Pulls chips backward, up and out through the hole entrance — built for blind holes." },
+  { id: "straight_flute", name: "Straight / Hand Flute", sfmMult: 0.85, chipDirection: "stored", holeFit: ["through"], note: "Chips stay in the flute gullets — fine for through-holes, brass, or interrupted cuts; depth-limited (~1.5×D) in blind holes." },
+  { id: "forming", name: "Forming / Roll Tap", sfmMult: 1.2, chipDirection: "none", holeFit: ["blind", "through"], note: "Cold-forms the thread, no chip at all — works in either hole type, but ductile materials only (aluminum, mild steel, copper/brass; not cast iron)." },
+];
+
+// Hole type — drives the tap-style recommendation/mismatch check above and
+// the depth default (blind holes conventionally spec'd shallower relative
+// to diameter than a full clearance through-hole).
+export const HOLE_TYPES = [
+  { id: "through", name: "Through Hole" },
+  { id: "blind", name: "Blind Hole" },
 ];
 
 // Common thread designations: major diameter (in) and pitch (in/rev = 1/TPI

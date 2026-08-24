@@ -17,7 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 
-const DEFAULT_TOOL = { toolTypeId: "end_mill", toolMaterialId: "carbide", coatingId: "altin", diameter: 0.25, flutes: 3, loc: 0.75, inserts: 4, cornerRadius: 0.03, includedAngle: 90, tipDiameter: 0, leadAngle: 45, pointAngle: 118, thickness: 0.0625, neckDiameter: 0, threadId: "unc_1_4_20", tapStyle: "spiral_point" };
+const DEFAULT_TOOL = { toolTypeId: "end_mill", toolMaterialId: "carbide", coatingId: "altin", diameter: 0.25, flutes: 3, loc: 0.75, inserts: 4, cornerRadius: 0.03, includedAngle: 90, tipDiameter: 0, leadAngle: 45, pointAngle: 118, thickness: 0.0625, neckDiameter: 0, threadId: "unc_1_4_20", tapStyle: "spiral_point", holeType: "through" };
 
 function Section({ icon: Icon, title, children, action, highlight }) {
   return (
@@ -121,7 +121,7 @@ export default function Calculator() {
       leadAngle: tool.leadAngle, cornerRadius: tool.cornerRadius, includedAngle: tool.includedAngle,
       tipDiameter: tool.tipDiameter, thickness: tool.thickness, neckDiameter: tool.neckDiameter, pointAngle: tool.pointAngle,
       radialLoad: adaptive.radialLoad, axialDoc: adaptive.axialDoc, featureDepth: adaptive.featureDepth,
-      threadId: tool.threadId, tapStyle: tool.tapStyle, pitch: tool.pitch,
+      threadId: tool.threadId, tapStyle: tool.tapStyle, pitch: tool.pitch, holeType: tool.holeType,
     });
   }, [tool, selectedMaterial, operationId, aggressiveness, machine, override, adaptive]);
 
