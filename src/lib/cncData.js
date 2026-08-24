@@ -450,6 +450,121 @@ export const THREAD_TABLE = [
   { id: "m12_fine", name: "M12 x 1.5 (Fine)", major: 12 / 25.4, tpi: null, pitch: 1.5 / 25.4, pitchMm: 1.5, unit: "mm" },
 ];
 
+// --- Standard drill index (ANSI/ASME B94.11M) ---------------------------
+// Every commercially stocked twist-drill size in the four standard series,
+// as decimal inches. Used to snap a computed theoretical tap-drill diameter
+// to the nearest size a machinist can actually buy/chuck up.
+// Number series #1 (largest, 0.2280") to #80 (smallest, 0.0135") and letter
+// series A-Z: Newman Tools decimal-equivalent chart (newmantools.com/decinch.htm).
+// Fractional series 1/64"-1" in 1/64 increments: standard, universally
+// tabulated (e.g. Newman Tools, Misumi USA drill-bit-size-chart).
+const NUMBER_DRILLS = {
+  1: 0.2280, 2: 0.2210, 3: 0.2130, 4: 0.2090, 5: 0.2055, 6: 0.2040, 7: 0.2010, 8: 0.1990,
+  9: 0.1960, 10: 0.1935, 11: 0.1910, 12: 0.1890, 13: 0.1850, 14: 0.1820, 15: 0.1800, 16: 0.1770,
+  17: 0.1730, 18: 0.1695, 19: 0.1660, 20: 0.1610, 21: 0.1590, 22: 0.1570, 23: 0.1540, 24: 0.1520,
+  25: 0.1495, 26: 0.1470, 27: 0.1440, 28: 0.1405, 29: 0.1360, 30: 0.1285, 31: 0.1200, 32: 0.1160,
+  33: 0.1130, 34: 0.1110, 35: 0.1100, 36: 0.1065, 37: 0.1040, 38: 0.1015, 39: 0.0995, 40: 0.0980,
+  41: 0.0960, 42: 0.0935, 43: 0.0890, 44: 0.0860, 45: 0.0820, 46: 0.0810, 47: 0.0785, 48: 0.0760,
+  49: 0.0730, 50: 0.0700, 51: 0.0670, 52: 0.0635, 53: 0.0595, 54: 0.0550, 55: 0.0520, 56: 0.0465,
+  57: 0.0430, 58: 0.0420, 59: 0.0410, 60: 0.0400, 61: 0.0390, 62: 0.0380, 63: 0.0370, 64: 0.0360,
+  65: 0.0350, 66: 0.0330, 67: 0.0320, 68: 0.0310, 69: 0.02925, 70: 0.0280, 71: 0.0260, 72: 0.0250,
+  73: 0.0240, 74: 0.0225, 75: 0.0210, 76: 0.0200, 77: 0.0180, 78: 0.0160, 79: 0.0145, 80: 0.0135,
+};
+const LETTER_DRILLS = {
+  A: 0.234, B: 0.238, C: 0.242, D: 0.246, E: 0.250, F: 0.257, G: 0.261, H: 0.266,
+  I: 0.272, J: 0.277, K: 0.281, L: 0.290, M: 0.295, N: 0.302, O: 0.316, P: 0.323,
+  Q: 0.332, R: 0.339, S: 0.348, T: 0.358, U: 0.368, V: 0.377, W: 0.386, X: 0.397,
+  Y: 0.404, Z: 0.413,
+};
+const FRACTIONAL_NUMER_MAX = 64; // 1/64" increments up to 1" (64/64)
+function fracLabel(n, d) {
+  const g = (a, b) => (b ? g(b, a % b) : a);
+  const div = g(n, d) || 1;
+  return `${n / div}/${d / div}"`;
+}
+
+// Flat, sorted (ascending) list of every standard drill: { label, dec, kind }.
+// Built once at module load; small (~150 entries), negligible cost.
+export const STANDARD_DRILLS = [
+  ...Array.from({ length: FRACTIONAL_NUMER_MAX }, (_, i) => i + 1).map((n) => ({
+    label: fracLabel(n, 64), dec: n / 64, kind: "fractional",
+  })),
+  ...Object.entries(NUMBER_DRILLS).map(([n, dec]) => ({ label: `#${n}`, dec, kind: "number" })),
+  ...Object.entries(LETTER_DRILLS).map(([l, dec]) => ({ label: l, dec, kind: "letter" })),
+].sort((a, b) => a.dec - b.dec);
+
+// Nearest standard (imperial) drill to a theoretical decimal-inch diameter.
+export function nearestStandardDrill(dec) {
+  if (!dec || dec <= 0) return null;
+  let best = STANDARD_DRILLS[0];
+  let bestDiff = Math.abs(best.dec - dec);
+  for (const d of STANDARD_DRILLS) {
+    const diff = Math.abs(d.dec - dec);
+    if (diff < bestDiff) { best = d; bestDiff = diff; }
+  }
+  return best;
+}
+
+// Nearest common metric drill (0.1mm steps from 1.0mm to 25.0mm, the
+// standard metric jobber-drill increment stocked by every tooling vendor).
+export function nearestMetricDrill(mm) {
+  if (!mm || mm <= 0) return null;
+  const step = Math.round(mm * 10) / 10;
+  return Math.max(1.0, Math.min(25.0, step));
+}
+
+// --- Tap drill size calculator -------------------------------------------
+// Cutting taps remove material to form the thread; forming/roll taps
+// displace it, so they need a LARGER starting hole (less material to push
+// out of the way) for the same % thread engagement. Both formulas below are
+// the Machinery's Handbook / ASME B1.1 relations, industry-standard 75%
+// thread engagement (the standard machine-shop default — full 100% engagement
+// gives negligible extra strength for dramatically higher tapping torque and
+// break risk):
+//   Cutting, inch:    drill = major - 0.01299 x %E / TPI            (%E=75 -> major - 0.974/TPI)
+//   Cutting, metric:  drill = major - %E x pitch / 76.98            (%E=75 -> major - 0.974 x pitch, i.e. the classic "major minus pitch" shop rule)
+//   Forming, inch:    drill = major - 0.0068  x %E / TPI
+//   Forming, metric:  drill = major - %E x pitch / 147.06
+// Sources: Tapmatic tapping formulas (tapmatic.com/tapping-formulas.php),
+// Texas Metal Works tap & drill calculator
+// (texasmetalworks.com/tap-drill-size-calculator/), LBL forming-tap drill
+// chart PDF
+// (www-eng.lbl.gov/~shuman/NEXT/MATERIALS&COMPONENTS/Pressure_vessels/roll_form_tap_drill_chart.pdf),
+// cross-checked against the published UNC/UNF tap-drill table (Welders
+// Supply, welders-supply.com/reference-charts/drill-bit-size-chart/ — e.g.
+// 1/4-20 -> #7 (0.201"), 3/8-16 -> 5/16" (0.3125"), 5/8-11 -> 17/32" (0.5312")).
+export function tapDrillSize(thread, { isForming = false, engagementPct = 75 } = {}) {
+  if (!thread || !thread.major) return null;
+  const isMetric = thread.unit === "mm";
+  let dec;
+  if (isMetric) {
+    const pitch = thread.pitchMm; // mm
+    const k = isForming ? 147.06 : 76.98;
+    const decMm = (thread.major * 25.4) - (engagementPct * pitch) / k;
+    dec = decMm / 25.4;
+    const nearestMm = nearestMetricDrill(decMm);
+    return {
+      decimal: dec,
+      display: `${nearestMm.toFixed(1)} mm`,
+      nearestDec: nearestMm / 25.4,
+      theoreticalDec: dec,
+      unit: "mm",
+    };
+  }
+  const tpi = thread.tpi;
+  if (!tpi) return null;
+  const k = isForming ? 0.0068 : 0.01299;
+  dec = thread.major - (k * engagementPct) / tpi;
+  const nearest = nearestStandardDrill(dec);
+  return {
+    decimal: dec,
+    display: nearest ? nearest.label : dec.toFixed(4) + '"',
+    nearestDec: nearest ? nearest.dec : dec,
+    theoreticalDec: dec,
+    unit: "in",
+  };
+}
+
 // Base chip load per tooth (inches) for METALS — the actual chip thickness a
 // solid carbide edge can take in an "easy" metal (aluminum), interpolated by
 // tool diameter. Validated against Kennametal/Fastenal/Harvey per-diameter IPT —

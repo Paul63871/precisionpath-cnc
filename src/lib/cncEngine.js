@@ -2,7 +2,7 @@ import {
   PART_MATERIALS, TOOL_MATERIALS, TOOL_MATERIAL_CLASS_MULT, COATINGS,
   TOOL_TYPES, OPERATIONS, WOC_CLASS_TARGETS, PERIPHERAL_ROUGH_WOC_TARGETS,
   TAP_SFM_BY_CLASS, TAP_TOOL_MATERIAL_MULT, TAP_STYLES, HOLE_TYPES, THREAD_TABLE,
-  baseChipLoad, lerp, clamp,
+  tapDrillSize, baseChipLoad, lerp, clamp,
 } from "./cncData";
 
 // input shape:
@@ -130,6 +130,7 @@ export function calculate(input) {
     };
     tapping.holeType = hole.id;
     tapping.chipDirection = style.chipDirection;
+    tapping.tapDrill = thread.major ? tapDrillSize(thread, { isForming: style.id === "forming" }) : null;
     if (loc && threadDepth > loc) tapping.notes.push(`Thread depth exceeds flute LOC (${loc}") — verify the tap's chamfer/flute length can reach full depth.`);
     if (hole.id === "blind" && style.id === "straight_flute" && depthRatio > 1.5) tapping.notes.push(`Blind-hole depth is ${depthRatio.toFixed(1)}×D — beyond the ~1.5×D chip-storage limit of a straight-flute tap at this diameter.`);
     if (mat.category === "Stainless" || mat.category === "Titanium" || mat.category === "Superalloy") tapping.notes.push("Work-hardening / heat-sensitive alloy — use cobalt or coated tap, keep speed down, flood coolant or tapping fluid.");

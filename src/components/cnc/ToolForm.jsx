@@ -1,9 +1,11 @@
-import React from "react";
+import React, { useState } from "react";
 import { Label } from "@/components/ui/label";
 import ResponsiveSelect from "@/components/cnc/ResponsiveSelect";
 import { TOOL_TYPES, TOOL_MATERIALS, COATINGS, FIELD_DEFS, THREAD_TABLE, TAP_STYLES, HOLE_TYPES } from "@/lib/cncData";
 import { UNITS, lenFromImp, lenToImp } from "@/lib/units";
 import NumberField from "@/components/NumberField";
+import TapDrillDialog from "@/components/cnc/TapDrillDialog";
+import { Drill } from "lucide-react";
 
 export default function ToolForm({ value, onChange, units = "imperial" }) {
   const set = (k, v) => onChange({ ...value, [k]: v });
@@ -13,6 +15,7 @@ export default function ToolForm({ value, onChange, units = "imperial" }) {
   const coating = COATINGS.find((c) => c.id === value.coatingId);
   const isTap = !!toolType.isTap;
   const selectedThread = THREAD_TABLE.find((t) => t.id === value.threadId) || THREAD_TABLE[0];
+  const [drillDialogOpen, setDrillDialogOpen] = useState(false);
 
   const renderField = (key) => {
     const def = FIELD_DEFS[key];
@@ -37,7 +40,17 @@ export default function ToolForm({ value, onChange, units = "imperial" }) {
     if (def.kind === "thread") {
       return (
         <div key={key} className="space-y-1.5 col-span-3">
-          <Label className="text-xs text-muted-foreground">{def.label}</Label>
+          <div className="flex items-center justify-between">
+            <Label className="text-xs text-muted-foreground">{def.label}</Label>
+            <button
+              type="button"
+              onClick={() => setDrillDialogOpen(true)}
+              className="flex items-center gap-1 text-[11px] font-medium text-brand hover:underline"
+              title="Show tap drill size for this thread"
+            >
+              <Drill className="h-3 w-3" /> Drill size
+            </button>
+          </div>
           <ResponsiveSelect
             value={value.threadId || "custom"}
             onValueChange={(v) => set("threadId", v)}
@@ -152,6 +165,14 @@ export default function ToolForm({ value, onChange, units = "imperial" }) {
           </p>
         )}
       </div>
+      {isTap && (
+        <TapDrillDialog
+          open={drillDialogOpen}
+          onOpenChange={setDrillDialogOpen}
+          currentThreadId={value.threadId}
+          isForming={value.tapStyle === "forming"}
+        />
+      )}
     </div>
   );
 }

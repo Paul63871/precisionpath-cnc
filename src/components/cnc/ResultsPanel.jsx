@@ -52,6 +52,9 @@ export default function ResultsPanel({ result, units = "imperial" }) {
             <div className="flex justify-between"><span className="text-muted-foreground">Thread Depth</span><span className="font-mono">{fmt(lenFromImp(result.tapping.threadDepth, units), 3)} {u.length} ({result.tapping.depthRatio}×D)</span></div>
             <div className="flex justify-between"><span className="text-muted-foreground">Pitch</span><span className="font-mono">{result.tapping.pitch ? fmt(lenFromImp(result.tapping.pitch, units), 4) : "—"} {u.length}/rev{result.tapping.tpi ? ` (${result.tapping.tpi} TPI)` : ""}</span></div>
             <div className="flex justify-between col-span-2"><span className="text-muted-foreground">Feed is pitch-locked</span><span className="font-mono">F = RPM × pitch (not adjustable)</span></div>
+            {result.tapping.tapDrill && (
+              <div className="flex justify-between col-span-2"><span className="text-muted-foreground">Tap Drill Size</span><span className="font-mono font-semibold text-brand">{result.tapping.tapDrill.display} (75% engagement)</span></div>
+            )}
           </div>
           {result.tapping.notes.length > 0 && (
             <div className="space-y-1 pt-0.5">
