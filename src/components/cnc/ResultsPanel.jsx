@@ -29,14 +29,37 @@ export default function ResultsPanel({ result, units = "imperial" }) {
       <div className="grid grid-cols-2 gap-3">
         <Metric icon={Gauge} label="Spindle Speed" value={result.rpm.toLocaleString()} unit="RPM" accent="text-brand" />
         <Metric icon={Activity} label="Feed Rate" value={feedFromImp(result.ipm, units).toLocaleString(undefined, { maximumFractionDigits: 1 })} unit={u.feed} accent="text-brand" />
-        <Metric icon={Layers} label="Axial DOC" value={fmt(lenFromImp(result.doc, units), 2)} unit={u.length} />
-        <Metric icon={Ruler} label="Radial WOC" value={fmt(lenFromImp(result.woc, units), 3)} unit={u.length} />
-        <Metric icon={TrendingUp} label={result.drilling ? "Feed/Rev" : "Feed/Tooth"} value={fmt(lenFromImp(result.programmedFpt ?? result.chipLoad, units), 4)} unit={result.drilling ? `${u.length}/rev` : `${u.length}/tooth`} />
+        <Metric icon={Layers} label={result.tapping ? "Thread Depth" : "Axial DOC"} value={fmt(lenFromImp(result.doc, units), 2)} unit={u.length} />
+        <Metric icon={Ruler} label={result.tapping ? "Major Ø" : "Radial WOC"} value={fmt(lenFromImp(result.woc, units), 3)} unit={u.length} />
+        <Metric icon={TrendingUp} label={result.tapping ? "Pitch" : result.drilling ? "Feed/Rev" : "Feed/Tooth"} value={result.tapping ? fmt(lenFromImp(result.tapping.pitch || 0, units), 4) : fmt(lenFromImp(result.programmedFpt ?? result.chipLoad, units), 4)} unit={result.tapping ? `${u.length}/rev${result.tapping.tpi ? ` (${result.tapping.tpi} TPI)` : ""}` : result.drilling ? `${u.length}/rev` : `${u.length}/tooth`} />
         <Metric icon={Zap} label="Power" value={fmt(power, 2)} unit={`/ ${fmt(powerAvail, 1)} ${u.power}`} accent={hpColor} />
       </div>
       {result.adaptive && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
           The <span className="font-medium">Radial WOC</span> above is your <span className="font-medium">Optimal Load</span> (max stepover) — enter it in HSMWorks → Passes → Optimal Load.
+        </div>
+      )}
+      {result.tapping && (
+        <div className="rounded-lg border border-border bg-card px-4 py-3 space-y-2.5">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Tapping Cycle — {result.tapping.threadName}</span>
+            <span className="font-mono text-sm font-semibold text-brand">{result.tapping.cycle}</span>
+          </div>
+          <div className="rounded-md bg-muted px-3 py-2 font-mono text-[11px] leading-relaxed text-foreground overflow-x-auto whitespace-nowrap">
+            {result.tapping.cycle} Z-{fmt(lenFromImp(result.tapping.threadDepth, units), 3)} R{fmt(lenFromImp(result.tapping.pitch ? result.tapping.pitch * 3 : 0.1, units), 3)} F{feedFromImp(result.ipm, units).toFixed(2)}
+          </div>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+            <div className="flex justify-between"><span className="text-muted-foreground">Thread Depth</span><span className="font-mono">{fmt(lenFromImp(result.tapping.threadDepth, units), 3)} {u.length} ({result.tapping.depthRatio}×D)</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">Pitch</span><span className="font-mono">{result.tapping.pitch ? fmt(lenFromImp(result.tapping.pitch, units), 4) : "—"} {u.length}/rev{result.tapping.tpi ? ` (${result.tapping.tpi} TPI)` : ""}</span></div>
+            <div className="flex justify-between col-span-2"><span className="text-muted-foreground">Feed is pitch-locked</span><span className="font-mono">F = RPM × pitch (not adjustable)</span></div>
+          </div>
+          {result.tapping.notes.length > 0 && (
+            <div className="space-y-1 pt-0.5">
+              {result.tapping.notes.map((n, i) => (
+                <p key={i} className="text-[11px] text-muted-foreground leading-relaxed">• {n}</p>
+              ))}
+            </div>
+          )}
         </div>
       )}
       {result.drilling && (

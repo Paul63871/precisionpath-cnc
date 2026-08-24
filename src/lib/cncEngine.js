@@ -1,6 +1,7 @@
 import {
   PART_MATERIALS, TOOL_MATERIALS, TOOL_MATERIAL_CLASS_MULT, COATINGS,
   TOOL_TYPES, OPERATIONS, WOC_CLASS_TARGETS, PERIPHERAL_ROUGH_WOC_TARGETS,
+  TAP_SFM_BY_CLASS, TAP_TOOL_MATERIAL_MULT, TAP_STYLES, THREAD_TABLE,
   baseChipLoad, lerp, clamp,
 } from "./cncData";
 
@@ -14,7 +15,7 @@ export function calculate(input) {
     diameter, flutes, loc, toolMaterialId, coatingId, toolTypeId,
     material, materialId, operationId, aggressiveness = 0.6, machine, override,
     leadAngle, cornerRadius, includedAngle, tipDiameter, thickness, neckDiameter, pointAngle,
-    radialLoad, axialDoc, featureDepth,
+    radialLoad, axialDoc, featureDepth, threadId, tapStyle,
   } = input;
 
   const mat = material || PART_MATERIALS.find((m) => m.id === materialId) || PART_MATERIALS[0];
@@ -34,6 +35,124 @@ export function calculate(input) {
   // which is where it belongs physically — it's a property of how much
   // material a given HP number actually removes, not a separate machine trait.
   const hpAtCutter = m.hp;
+
+  // --- TAPPING (rigid tapping) ---
+  // Physically distinct from every other operation in this engine: a tap's
+  // feed is NOT a chip-load-driven free variable. Once the tap enters the
+  // hole its flutes ride the thread groove already being cut, so the axial
+  // feed per revolution is rigidly locked to the thread pitch — F = RPM x
+  // pitch, exactly one pitch of travel per revolution, with zero degrees of
+  // freedom (aggressiveness cannot change it; changing it would strip the
+  // thread). The only free variable is spindle speed, and even that runs far
+  // slower than drilling/milling because a tap cuts on its full flank
+  // simultaneously rather than a single leading edge (see TAP_SFM_BY_CLASS
+  // sourcing in cncData.js). This branch returns its own complete result
+  // shape and skips the doc/woc/chip-load/HP-solve pipeline below entirely —
+  // none of those concepts (radial engagement, chip thinning, HEM stepover)
+  // apply to a tap.
+  if (op.docMode === "tap" || tt.isTap) {
+    const thread = THREAD_TABLE.find((t) => t.id === threadId) || THREAD_TABLE[0];
+    // diameter/pitch come from the selected thread designation when available;
+    // fall back to the raw diameter/pitch the caller passed in for "custom".
+    const tapMajor = thread.major != null ? thread.major : diameter;
+    const pitch = thread.pitch != null ? thread.pitch : input.pitch;
+    const style = TAP_STYLES.find((s) => s.id === tapStyle) || TAP_STYLES[0];
+
+    const warnings = [];
+    if (!pitch || pitch <= 0) {
+      warnings.push("No thread pitch known — select a thread size or enter a custom pitch/TPI.");
+    }
+
+    // --- Surface speed (SFM) --- HSS cut-tap baseline by material class,
+    // cobalt multiplier on top (TAP_TOOL_MATERIAL_MULT), tap-style multiplier
+    // (spiral point/flute/straight/forming — TAP_STYLES), and coating exactly
+    // like every other tool (uncoated taps run slower than TiN/TiCN-coated).
+    let sfm;
+    if (override?.sfm) {
+      sfm = override.sfm;
+    } else {
+      const range = (mat.materialClass && TAP_SFM_BY_CLASS[mat.materialClass]) || TAP_SFM_BY_CLASS.steel_mild;
+      const tapMatMult = TAP_TOOL_MATERIAL_MULT[tm.id] != null ? TAP_TOOL_MATERIAL_MULT[tm.id] : TAP_TOOL_MATERIAL_MULT.hss;
+      sfm = lerp(range[0], range[1], agg) * tapMatMult * coat.sfmMult * style.sfmMult;
+    }
+
+    // --- RPM --- straightforward SFM -> RPM at the tap's major diameter.
+    let rpm = (sfm * 3.82) / tapMajor;
+    const rpmIdeal = rpm;
+    rpm = clamp(rpm, m.minRpm, m.maxRpm);
+    const rpmClamped = Math.abs(rpm - rpmIdeal) > 0.5;
+
+    // --- Feed (IPM) --- LOCKED to pitch. No chip load, no aggressiveness
+    // term, no flute-count multiplier — this is the one true physical
+    // constant of rigid tapping (F = RPM x pitch).
+    let ipm = pitch > 0 ? rpm * pitch : 0;
+    const ipmIdeal = ipm;
+    ipm = Math.min(ipm, m.maxIpm);
+    const ipmClamped = ipm < ipmIdeal - 0.01;
+    if (ipmClamped) {
+      warnings.push(`Machine max feed (${m.maxIpm} IPM) is below the pitch-locked tapping feed — rigid tapping REQUIRES the spindle to advance exactly RPM x pitch. If the machine truly cannot hit ${ipmIdeal.toFixed(2)} IPM at ${Math.round(rpm)} RPM, reduce RPM instead (never the feed alone) or the tap will strip the thread.`);
+    }
+
+    // --- Thread depth / G84 cycle ---
+    const threadDepth = (featureDepth && featureDepth > 0) ? featureDepth : (loc || tapMajor * 2);
+    const depthRatio = tapMajor > 0 ? threadDepth / tapMajor : 0;
+    const retract = Math.max(0.1, tapMajor * 0.3);
+    const tapping = {
+      threadDepth: Number(threadDepth.toFixed(3)),
+      depthRatio: Number(depthRatio.toFixed(1)),
+      pitch: pitch ? Number(pitch.toFixed(5)) : null,
+      tpi: thread.tpi || null,
+      pitchMm: thread.pitchMm || null,
+      threadName: thread.name,
+      cycle: "G84",
+      notes: [],
+    };
+    if (loc && threadDepth > loc) tapping.notes.push(`Thread depth exceeds flute LOC (${loc}") — verify the tap's chamfer/flute length can reach full depth.`);
+    if (mat.category === "Stainless" || mat.category === "Titanium" || mat.category === "Superalloy") tapping.notes.push("Work-hardening / heat-sensitive alloy — use cobalt or coated tap, keep speed down, flood coolant or tapping fluid.");
+    if (style.id === "forming" && (mat.category === "Cast Iron" || mat.category === "Iron")) tapping.notes.push("Forming/roll taps are not recommended in cast iron — the material doesn't deform ductilely enough to form a clean thread.");
+    if (style.note) tapping.notes.push(style.note);
+
+    // Horsepower / torque for tapping is small relative to milling/drilling —
+    // reported for consistency with the rest of the app, using the same
+    // MRR x hpFactor relationship, but the thread's minor-diameter annulus
+    // rather than the full circle (a tap doesn't remove a full bore's worth
+    // of material — only the thread groove volume).
+    const minorDiameter = pitch ? tapMajor - 1.0825 * pitch : tapMajor * 0.85;
+    const mrr = (Math.PI / 4) * (tapMajor * tapMajor - minorDiameter * minorDiameter) * ipm;
+    let hpRequired = mrr * mat.hpFactor;
+    if (hpAtCutter > 0 && hpRequired > hpAtCutter) {
+      hpRequired = hpAtCutter;
+    }
+    if (coat.verified === false) warnings.push(`${coat.name} speed multiplier is an engineering estimate — no manufacturer speed chart is published for this coating.`);
+    if (mat.hpFactorEstimate) warnings.push("Horsepower factor for this material is an engineering estimate, not sourced from a published handbook value.");
+    if (rpmClamped) warnings.push(rpm > rpmIdeal ? "Spindle minimum forced RPM above ideal — reduce SFM or use a larger tap." : "Spindle max RPM reached — ideal " + Math.round(rpmIdeal) + " RPM. Increase SFM or use a smaller tap.");
+
+    return {
+      sfm: Math.round(sfm),
+      rpm: Math.round(rpm),
+      chipLoad: tapping.pitch || 0,
+      programmedFpt: null,
+      ipm: Number(ipm.toFixed(2)),
+      woc: Number(tapMajor.toFixed(3)),
+      doc: Number(threadDepth.toFixed(3)),
+      mrr: Number(mrr.toFixed(mrr < 0.01 ? 4 : 2)),
+      hpRequired: Number(hpRequired.toFixed(2)),
+      hpAvailable: m.hp,
+      hpUtilization: hpAtCutter > 0 ? Math.min(100, Math.round((hpRequired / hpAtCutter) * 100)) : 0,
+      passes: null,
+      stepdown: null,
+      drilling: null,
+      tapping,
+      radialThinningFactor: 1,
+      radialEngagementPct: 0,
+      adaptive: false,
+      effectiveDiameter: Number(tapMajor.toFixed(3)),
+      ballFeedCompensation: 1,
+      sfmCapped: false,
+      warnings,
+    };
+  }
+
 
   // Tool-material speed ratio vs solid carbide, resolved by workpiece material
   // class where we have real per-class data (HSS/cobalt/indexable/PCD vary a lot

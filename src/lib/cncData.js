@@ -188,6 +188,7 @@ export const TOOL_TYPES = [
   { id: "chamfer", name: "Chamfer / V-Bit", sfmMult: 1.0, chipMult: 0.8, docMult: 0.6, isDrill: false, countField: "flutes", fields: ["flutes", "loc", "includedAngle", "tipDiameter"] },
   { id: "face_mill", name: "Face Mill (Indexable)", sfmMult: 1.0, chipMult: 1.1, docMult: 0.5, isDrill: false, countField: "inserts", fields: ["inserts", "loc", "leadAngle"] },
   { id: "drill", name: "Drill", sfmMult: 1.0, chipMult: 1.0, docMult: 1.0, isDrill: true, countField: "flutes", fields: ["flutes", "pointAngle", "loc"] },
+  { id: "tap", name: "Tap", sfmMult: 1.0, chipMult: 1.0, docMult: 1.0, isDrill: false, isTap: true, countField: "flutes", fields: ["threadId", "tapStyle", "flutes", "loc"] },
   { id: "slitting_saw", name: "Slitting Saw", sfmMult: 0.9, chipMult: 0.8, docMult: 1.0, isDrill: false, countField: "flutes", fields: ["flutes", "thickness"] },
   { id: "t_slot", name: "T-Slot Cutter", sfmMult: 0.95, chipMult: 0.9, docMult: 1.0, isDrill: false, countField: "flutes", fields: ["flutes", "neckDiameter"] },
 ];
@@ -204,6 +205,8 @@ export const FIELD_DEFS = {
   pointAngle: { label: "Point Angle", kind: "angle", step: 1 },
   thickness: { label: "Thickness", kind: "length", step: 0.001 },
   neckDiameter: { label: "Neck Diameter", kind: "length", step: 0.001 },
+  threadId: { label: "Thread Size", kind: "thread" },
+  tapStyle: { label: "Tap Style", kind: "tapStyle" },
 };
 
 // Operation presets. wocFactor = radial engagement as a fraction of tool diameter,
@@ -232,6 +235,13 @@ export const OPERATIONS = [
   { id: "bore", name: "Circular / Bore", category: "2D", sfmMult: 0.8, chipMult: 1.0, feedMult: 1.0, wocFactor: 1.0, docMode: "slot", adaptive: false, slotDerate: true },
   { id: "thread", name: "Thread Milling", category: "2D", sfmMult: 0.8, chipMult: 0.6, feedMult: 1.0, wocFactor: 0.03, docMode: "profile", adaptive: false },
   { id: "drilling", name: "Drilling", category: "2D", sfmMult: 0.8, chipMult: 1.0, feedMult: 1.0, wocFactor: 1.0, docMode: "drill", adaptive: false },
+  // Rigid tapping. Feed is NOT chip-load driven — a tap's flutes follow an
+  // already-formed thread groove, so the feed per revolution is physically
+  // locked to the thread pitch (F = RPM x pitch); sfmMult/chipMult/feedMult
+  // are kept at 1.0 here for API-shape consistency but the engine's tapping
+  // branch ignores chipMult/feedMult entirely (see cncEngine.js docMode ===
+  // "tap"). wocFactor is unused (no radial engagement concept for a tap).
+  { id: "tapping", name: "Tapping", category: "2D", sfmMult: 1.0, chipMult: 1.0, feedMult: 1.0, wocFactor: 1.0, docMode: "tap", adaptive: false },
   { id: "engrave", name: "2D Engrave", category: "2D", sfmMult: 1.0, chipMult: 0.4, feedMult: 1.0, wocFactor: 0.02, docMode: "profile", adaptive: false },
   // 3D / High-Speed Machining (HSM)
   { id: "3d_adaptive_rough", name: "3D Adaptive Clearing (Rough)", category: "3D", sfmMult: 1.0, chipMult: 1.0, feedMult: 1.0, wocFactor: 0.15, docMode: "hem", adaptive: true, fineStepup: true },
@@ -295,6 +305,119 @@ export const PERIPHERAL_ROUGH_WOC_TARGETS = {
   plastic:          { roughPct: [0.35, 0.50], ceiling: 0.50 },
   composite:        { roughPct: [0.25, 0.40], ceiling: 0.40 },
 };
+
+// --- TAPPING ---
+// Rigid tapping is physically unlike drilling or milling: a tap's flutes ride
+// an already-cut/formed thread groove, so feed per revolution is NOT a free
+// chip-load variable at all — it is rigidly locked to the thread pitch
+// (F = RPM x pitch, one pitch of travel per revolution, every time). The only
+// free variable is spindle speed (SFM), and even that runs much slower than
+// milling/drilling because a tap cuts on its full flank simultaneously rather
+// than a single leading edge. Sources (cut-tap SFM by material, HSS baseline):
+// Viking Drill & Tool tapping feed/speed table (vikingdrill.com/viking-Tap-FeedandSpeed.php),
+// ARM Precision Mfg tapping speed selection guide (armpremfg.com/how-to-select-suitable-tapping-speed-for-your-tapping-machine/),
+// Slugger Tool tap speed chart, HSS/M35/M42 by material (sluggertool.com/resources/tap-speed-chart/),
+// Magotan Tools tapping speeds/feeds formulas & charts (magotan-tools.com/news/industry-news/tapping-speeds-and-feeds-formulas-charts-and-practical-machining-rules.html),
+// ToolCroze CNC tapping speeds & feeds calculator (toolcroze.com/cnc-tapping-speeds-calculator/),
+// Drillbitsworld tapping speeds & feeds chart (drillbitsworld.com/tapping-speeds-chart/).
+// Ranges below are the HSS cut-tap baseline (SFM); cobalt/coated multipliers
+// apply on top via TAP_TOOL_MATERIAL_MULT, same pattern as milling's
+// TOOL_MATERIAL_CLASS_MULT. Keyed by the same materialClass already on every
+// PART_MATERIALS entry so no new per-material data entry is needed.
+export const TAP_SFM_BY_CLASS = {
+  aluminum:        [40, 70],   // Viking 60-80, ARM 70-90, Magotan 60-90 (aluminum alloys)
+  nonferrous_soft: [40, 90],   // brass/bronze/copper — Viking 30-100, Magotan-style free-machining range
+  steel_mild:      [25, 45],   // Viking mild steel 30-50, ARM low-carbon 20-40, Magotan 40-60 low-carbon
+  steel_alloy:     [15, 30],   // Viking tool steel 15-25 / medium carbon 35, ARM medium carbon 20-30, Magotan alloy/tool steel 30-40
+  stainless:       [10, 20],   // Viking 300-series 10-20, ARM austenitic 10-20, Magotan 300-series 20-30
+  cast_iron:       [30, 55],   // Viking gray CI 30-60, ARM gray/ductile 15-30, Magotan gray CI 50-70
+  titanium:        [8, 15],    // Viking titanium alloys 10, Slugger Ti Grade 2/5 (HSS not recommended -> use low end w/ cobalt)
+  superalloy:      [5, 10],    // Viking nickel alloys 10, Nimonic 10-12 — Inconel/Hastelloy treated conservatively
+  wood:             [50, 90],  // no direct tap data — plastics/soft-material analog retained conservatively
+  plastic:          [50, 90],  // Viking plastic 50-70, Magotan-style thermoplastics range (cut/thread-forming taps)
+  composite:        [40, 70],  // no direct manufacturer tap data for composites — conservative mid-range estimate
+};
+
+// Tap tool-material speed multiplier vs the HSS baseline above. Cobalt (M35)
+// and coated HSS taps run measurably faster than plain HSS in the same
+// material (Slugger Tool's M2/M35/M42 comparison table shows roughly 1.25-1.6x
+// for M35 cobalt and 1.4-2.0x for M42 cobalt vs M2 HSS, material-dependent).
+// Solid carbide and PCD taps are not a standard commercial tap material for
+// general shop rigid tapping, so they intentionally are NOT offered as tap
+// tool-material options in the UI (see TOOL_MATERIALS usage in ToolForm) —
+// only hss/cobalt apply here.
+export const TAP_TOOL_MATERIAL_MULT = {
+  hss: 1.0,
+  cobalt: 1.4,
+};
+
+// Tap style multipliers/notes. Spiral-point (gun-nose) taps push chips ahead
+// (best for through-holes); spiral-flute taps pull chips up and out (best for
+// blind holes); straight-flute taps leave chips in the flute (best with
+// interrupted cuts / brass); forming/roll taps displace material with no chip
+// at all and can run faster with less torque since there's no cutting action.
+// Source: general tooling-vendor guidance (Viking Drill, Slugger Tool, Fuller
+// Fasteners tap-style guides) — consistent across sources, no single numeric
+// citation needed beyond the style descriptions themselves.
+export const TAP_STYLES = [
+  { id: "spiral_point", name: "Spiral Point (Gun Nose)", sfmMult: 1.0, note: "Pushes chips ahead — use for through-holes." },
+  { id: "spiral_flute", name: "Spiral Flute", sfmMult: 0.95, note: "Pulls chips out the top — use for blind holes." },
+  { id: "straight_flute", name: "Straight Flute", sfmMult: 0.85, note: "Chips stay in the flute — best for brass or interrupted cuts." },
+  { id: "forming", name: "Forming / Roll Tap", sfmMult: 1.2, note: "Displaces material, no chip — runs faster, needs more torque, no coolant/chip concerns." },
+];
+
+// Common thread designations: major diameter (in) and pitch (in/rev = 1/TPI
+// for UNC/UNF, mm/rev converted to inches for metric). TPI kept for UI
+// display on unified threads. Metric entries store pitchMm for display too.
+// Sources: Slugger Tool thread chart (sluggertool.com/thread-chart/),
+// CarbideDepot UNC/UNF tap chart (carbidedepot.com/formulas-tap-standard.htm),
+// MLC tap drill & clearance chart (mlc.org.uk/guides/metric-tap-drill-chart),
+// MechCodex ISO metric thread pitch chart (mechcodex.com/reference/iso-metric-thread-pitch),
+// ThreadSpec.org metric coarse/fine chart (threadspec.org, threadspec.org/metric-fine/).
+export const THREAD_TABLE = [
+  { id: "custom", name: "Custom / Manual Entry", major: null, pitch: null, tpi: null, pitchMm: null, unit: null },
+  // --- UNC (Unified National Coarse) ---
+  { id: "unc_4_40", name: "#4-40 UNC", major: 0.1120, tpi: 40, pitch: 1 / 40, unit: "in" },
+  { id: "unc_6_32", name: "#6-32 UNC", major: 0.1380, tpi: 32, pitch: 1 / 32, unit: "in" },
+  { id: "unc_8_32", name: "#8-32 UNC", major: 0.1640, tpi: 32, pitch: 1 / 32, unit: "in" },
+  { id: "unc_10_24", name: "#10-24 UNC", major: 0.1900, tpi: 24, pitch: 1 / 24, unit: "in" },
+  { id: "unc_1_4_20", name: "1/4-20 UNC", major: 0.2500, tpi: 20, pitch: 1 / 20, unit: "in" },
+  { id: "unc_5_16_18", name: "5/16-18 UNC", major: 0.3125, tpi: 18, pitch: 1 / 18, unit: "in" },
+  { id: "unc_3_8_16", name: "3/8-16 UNC", major: 0.3750, tpi: 16, pitch: 1 / 16, unit: "in" },
+  { id: "unc_7_16_14", name: "7/16-14 UNC", major: 0.4375, tpi: 14, pitch: 1 / 14, unit: "in" },
+  { id: "unc_1_2_13", name: "1/2-13 UNC", major: 0.5000, tpi: 13, pitch: 1 / 13, unit: "in" },
+  { id: "unc_9_16_12", name: "9/16-12 UNC", major: 0.5625, tpi: 12, pitch: 1 / 12, unit: "in" },
+  { id: "unc_5_8_11", name: "5/8-11 UNC", major: 0.6250, tpi: 11, pitch: 1 / 11, unit: "in" },
+  { id: "unc_3_4_10", name: "3/4-10 UNC", major: 0.7500, tpi: 10, pitch: 1 / 10, unit: "in" },
+  // --- UNF (Unified National Fine) ---
+  { id: "unf_4_48", name: "#4-48 UNF", major: 0.1120, tpi: 48, pitch: 1 / 48, unit: "in" },
+  { id: "unf_6_40", name: "#6-40 UNF", major: 0.1380, tpi: 40, pitch: 1 / 40, unit: "in" },
+  { id: "unf_8_36", name: "#8-36 UNF", major: 0.1640, tpi: 36, pitch: 1 / 36, unit: "in" },
+  { id: "unf_10_32", name: "#10-32 UNF", major: 0.1900, tpi: 32, pitch: 1 / 32, unit: "in" },
+  { id: "unf_1_4_28", name: "1/4-28 UNF", major: 0.2500, tpi: 28, pitch: 1 / 28, unit: "in" },
+  { id: "unf_5_16_24", name: "5/16-24 UNF", major: 0.3125, tpi: 24, pitch: 1 / 24, unit: "in" },
+  { id: "unf_3_8_24", name: "3/8-24 UNF", major: 0.3750, tpi: 24, pitch: 1 / 24, unit: "in" },
+  { id: "unf_7_16_20", name: "7/16-20 UNF", major: 0.4375, tpi: 20, pitch: 1 / 20, unit: "in" },
+  { id: "unf_1_2_20", name: "1/2-20 UNF", major: 0.5000, tpi: 20, pitch: 1 / 20, unit: "in" },
+  { id: "unf_9_16_18", name: "9/16-18 UNF", major: 0.5625, tpi: 18, pitch: 1 / 18, unit: "in" },
+  { id: "unf_5_8_18", name: "5/8-18 UNF", major: 0.6250, tpi: 18, pitch: 1 / 18, unit: "in" },
+  // --- Metric Coarse ---
+  { id: "m3_coarse", name: "M3 x 0.5", major: 3 / 25.4, tpi: null, pitch: 0.5 / 25.4, pitchMm: 0.5, unit: "mm" },
+  { id: "m4_coarse", name: "M4 x 0.7", major: 4 / 25.4, tpi: null, pitch: 0.7 / 25.4, pitchMm: 0.7, unit: "mm" },
+  { id: "m5_coarse", name: "M5 x 0.8", major: 5 / 25.4, tpi: null, pitch: 0.8 / 25.4, pitchMm: 0.8, unit: "mm" },
+  { id: "m6_coarse", name: "M6 x 1.0", major: 6 / 25.4, tpi: null, pitch: 1.0 / 25.4, pitchMm: 1.0, unit: "mm" },
+  { id: "m8_coarse", name: "M8 x 1.25", major: 8 / 25.4, tpi: null, pitch: 1.25 / 25.4, pitchMm: 1.25, unit: "mm" },
+  { id: "m10_coarse", name: "M10 x 1.5", major: 10 / 25.4, tpi: null, pitch: 1.5 / 25.4, pitchMm: 1.5, unit: "mm" },
+  { id: "m12_coarse", name: "M12 x 1.75", major: 12 / 25.4, tpi: null, pitch: 1.75 / 25.4, pitchMm: 1.75, unit: "mm" },
+  { id: "m14_coarse", name: "M14 x 2.0", major: 14 / 25.4, tpi: null, pitch: 2.0 / 25.4, pitchMm: 2.0, unit: "mm" },
+  { id: "m16_coarse", name: "M16 x 2.0", major: 16 / 25.4, tpi: null, pitch: 2.0 / 25.4, pitchMm: 2.0, unit: "mm" },
+  { id: "m20_coarse", name: "M20 x 2.5", major: 20 / 25.4, tpi: null, pitch: 2.5 / 25.4, pitchMm: 2.5, unit: "mm" },
+  { id: "m24_coarse", name: "M24 x 3.0", major: 24 / 25.4, tpi: null, pitch: 3.0 / 25.4, pitchMm: 3.0, unit: "mm" },
+  // --- Metric Fine ---
+  { id: "m8_fine", name: "M8 x 1.0 (Fine)", major: 8 / 25.4, tpi: null, pitch: 1.0 / 25.4, pitchMm: 1.0, unit: "mm" },
+  { id: "m10_fine", name: "M10 x 1.25 (Fine)", major: 10 / 25.4, tpi: null, pitch: 1.25 / 25.4, pitchMm: 1.25, unit: "mm" },
+  { id: "m12_fine", name: "M12 x 1.5 (Fine)", major: 12 / 25.4, tpi: null, pitch: 1.5 / 25.4, pitchMm: 1.5, unit: "mm" },
+];
 
 // Base chip load per tooth (inches) for METALS — the actual chip thickness a
 // solid carbide edge can take in an "easy" metal (aluminum), interpolated by

@@ -17,7 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 
-const DEFAULT_TOOL = { toolTypeId: "end_mill", toolMaterialId: "carbide", coatingId: "altin", diameter: 0.25, flutes: 3, loc: 0.75, inserts: 4, cornerRadius: 0.03, includedAngle: 90, tipDiameter: 0, leadAngle: 45, pointAngle: 118, thickness: 0.0625, neckDiameter: 0 };
+const DEFAULT_TOOL = { toolTypeId: "end_mill", toolMaterialId: "carbide", coatingId: "altin", diameter: 0.25, flutes: 3, loc: 0.75, inserts: 4, cornerRadius: 0.03, includedAngle: 90, tipDiameter: 0, leadAngle: 45, pointAngle: 118, thickness: 0.0625, neckDiameter: 0, threadId: "unc_1_4_20", tapStyle: "spiral_point" };
 
 function Section({ icon: Icon, title, children, action, highlight }) {
   return (
@@ -121,6 +121,7 @@ export default function Calculator() {
       leadAngle: tool.leadAngle, cornerRadius: tool.cornerRadius, includedAngle: tool.includedAngle,
       tipDiameter: tool.tipDiameter, thickness: tool.thickness, neckDiameter: tool.neckDiameter, pointAngle: tool.pointAngle,
       radialLoad: adaptive.radialLoad, axialDoc: adaptive.axialDoc, featureDepth: adaptive.featureDepth,
+      threadId: tool.threadId, tapStyle: tool.tapStyle, pitch: tool.pitch,
     });
   }, [tool, selectedMaterial, operationId, aggressiveness, machine, override, adaptive]);
 
@@ -163,7 +164,7 @@ export default function Calculator() {
               onChange={(v) => { if (v.materialId) setMaterialId(v.materialId); if (v.operationId) setOperationId(v.operationId); }}
             />
           </Section>
-          {operationId !== "drilling" && (
+          {operationId !== "drilling" && operationId !== "tapping" && (
             <Section icon={Sliders} title="Path Engagement">
               <p className="text-[11px] text-muted-foreground mb-3">Enter the feature depth, Optimal Load (max radial stepover), and axial step-down from your CAM's Passes tab. Leave blank to auto-calculate. These load settings apply to both roughing and finishing adaptive paths.</p>
               <div className="grid grid-cols-2 gap-3">
@@ -215,6 +216,15 @@ export default function Calculator() {
               <div className="space-y-1.5">
                 <Label className="text-xs text-muted-foreground">Hole Depth ({UNITS[units].length})</Label>
                 <NumberField className="h-9" allowClear placeholder="Auto (3×D)" value={adaptive.featureDepth || undefined} onValueChange={(n) => setAdaptive((a) => ({ ...a, featureDepth: n || 0 }))} />
+              </div>
+            </Section>
+          )}
+          {operationId === "tapping" && (
+            <Section icon={Sliders} title="Thread Depth">
+              <p className="text-[11px] text-muted-foreground mb-3">Enter the full thread depth needed. Feed is locked to the thread pitch (F = RPM × pitch) — it is not adjustable by aggressiveness, which only affects spindle speed.</p>
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Thread Depth ({UNITS[units].length})</Label>
+                <NumberField className="h-9" allowClear placeholder="Auto (2×D)" value={adaptive.featureDepth || undefined} onValueChange={(n) => setAdaptive((a) => ({ ...a, featureDepth: n || 0 }))} />
               </div>
             </Section>
           )}

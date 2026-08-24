@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 // External value changes (unit switches, loading a saved calc) are mirrored when
 // the field is not focused, so display stays in sync without clobbering in-progress edits.
 // allowClear: when true, clearing the field pushes `undefined` (used for optional/auto fields).
-export default function NumberField({ value, onValueChange, className, placeholder, allowClear }) {
+export default function NumberField({ value, onValueChange, className, placeholder, allowClear, disabled, step }) {
   const [text, setText] = useState("");
   const [focused, setFocused] = useState(false);
 
@@ -40,8 +40,10 @@ export default function NumberField({ value, onValueChange, className, placehold
       onChange={handleChange}
       onFocus={() => setFocused(true)}
       onBlur={() => setFocused(false)}
-      className={`min-h-[44px] ${className || ""}`}
+      className={`min-h-[44px] ${disabled ? "opacity-60 cursor-not-allowed bg-muted" : ""} ${className || ""}`}
       placeholder={placeholder}
+      disabled={disabled}
+      step={step}
     />
   );
 }
