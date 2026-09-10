@@ -121,6 +121,22 @@ export const PART_MATERIALS = [
   { id: "g10", name: "G10 / FR4", category: "Composite", materialClass: "composite",
     sfmRange: [350, 650], chipLoadFactor: 0.7, hpFactor: 0.25,
     slotDepthFactor: 1.0, profileDepthFactor: 1.7 },
+  // G11 shares G10's fiberglass/epoxy structure and the same manufacturer-
+  // published carbide speeds/feeds envelope (Harvey Performance's speeds &
+  // feeds chart lists "FR4, G10, G11" together under one identical SFM/chip-
+  // load/DOC table: https://harveyperformance.widen.net/content/ybttidbigh/pdf/SF_889200-6FL.pdf).
+  // What differs is G11's higher-crosslink-density resin (rated to ~180-200C
+  // vs G10's ~130-150C continuous service), which multiple manufacturer/shop
+  // sources describe as "slightly more abrasive" with "slightly slower
+  // machining speeds" and recommend reducing DOC ~10-15% vs G10 to avoid
+  // ply-interface micro-cracking on interrupted cuts:
+  // https://www.atlasfibre.com/g10-vs-g11-key-differences-explained/
+  // https://www.readyplastics.com/resources/machining/glass-epoxy
+  // sfmRange and hpFactor scaled ~10% below G10; slotDepthFactor/
+  // profileDepthFactor (DOC) scaled ~12% below G10 per that guidance.
+  { id: "g11", name: "G11 / FR5", category: "Composite", materialClass: "composite",
+    sfmRange: [315, 585], chipLoadFactor: 0.7, hpFactor: 0.28,
+    slotDepthFactor: 0.88, profileDepthFactor: 1.5 },
 ];
 
 // Global fallback multipliers (used when a material has no materialClass match
@@ -336,7 +352,11 @@ export const TAP_SFM_BY_CLASS = {
   superalloy:      [5, 10],    // Viking nickel alloys 10, Nimonic 10-12 — Inconel/Hastelloy treated conservatively
   wood:             [50, 90],  // no direct tap data — plastics/soft-material analog retained conservatively
   plastic:          [50, 90],  // Viking plastic 50-70, Magotan-style thermoplastics range (cut/thread-forming taps)
-  composite:        [40, 70],  // no direct manufacturer tap data for composites — conservative mid-range estimate
+  composite:        [50, 100], // G10/G11/CFRP direct tapping (sharp cutting tap, not forming/roll — glass/carbon
+                                // fiber doesn't deform ductilely). jhd-material cites 50-150 SFM for composite
+                                // tapping; kept to the lower half of that band since it's a single-source figure
+                                // vs the two-source-corroborated ranges elsewhere in this table:
+                                // https://blog.jhd-material.com/how-to-tap-threaded-holes-in-g10-and-fr4-without-cracking
 };
 
 // Tap tool-material speed multiplier vs the HSS baseline above. Cobalt (M35)

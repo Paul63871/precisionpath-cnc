@@ -135,6 +135,8 @@ export function calculate(input) {
     if (hole.id === "blind" && style.id === "straight_flute" && depthRatio > 1.5) tapping.notes.push(`Blind-hole depth is ${depthRatio.toFixed(1)}×D — beyond the ~1.5×D chip-storage limit of a straight-flute tap at this diameter.`);
     if (mat.category === "Stainless" || mat.category === "Titanium" || mat.category === "Superalloy") tapping.notes.push("Work-hardening / heat-sensitive alloy — use cobalt or coated tap, keep speed down, flood coolant or tapping fluid.");
     if (style.id === "forming" && (mat.category === "Cast Iron" || mat.category === "Iron")) tapping.notes.push("Forming/roll taps are not recommended in cast iron — the material doesn't deform ductilely enough to form a clean thread.");
+    if (style.id === "forming" && mat.category === "Composite") tapping.notes.push("Forming/roll taps are not recommended in fiberglass/carbon laminates — the fibers shear or crack instead of deforming plastically. Use a sharp cutting tap.");
+    if (mat.category === "Composite") tapping.notes.push(`Direct tapping in laminate is workable for low-cycle, static joints (increase thread engagement to 1.5-2.5×D vs the usual metal 75% depth, keep the tap sharp, cut rather than force it). For repeated assembly/disassembly or high-load joints, use a bonded or mechanically retained metal insert (Heli-Coil, threaded insert) instead — current thread depth is ${depthRatio.toFixed(1)}×D.`);
     if (style.note) tapping.notes.push(style.note);
 
     // Horsepower / torque for tapping is small relative to milling/drilling —
@@ -586,6 +588,7 @@ export function calculate(input) {
   if (tt.id === "bull_nose" && cornerRadius && op.docMode === "slot" && doc > cornerRadius * 2) warnings.push("Bull-nose full-width slotting deeper than the corner radius — chip evacuation at the radius is tight; peck or reduce DOC.");
   if (mat.category === "Stainless" || mat.category === "Titanium" || mat.category === "Superalloy") warnings.push("Work hardening / heat-sensitive alloy — keep chip load up, avoid rubbing, use coolant or air.");
   if (mat.id === "cfrp" || mat.id === "g10") warnings.push("Abrasive composite — expect rapid tool wear; diamond-coated carbide recommended.");
+  if (mat.id === "g11") warnings.push("Abrasive composite — expect rapid tool wear; diamond-coated carbide recommended. G11's higher-crosslink resin is slightly more abrasive than G10/FR4 — DOC already reduced ~12% for this material; avoid pushing feeds back up to G10 levels.");
   if (coat.verified === false) warnings.push(`${coat.name} speed multiplier is an engineering estimate — no manufacturer speed chart is published for this coating.`);
   if (mat.hpFactorEstimate) warnings.push("Horsepower factor for this material is an engineering estimate, not sourced from a published handbook value.");
 

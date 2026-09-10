@@ -150,7 +150,8 @@ INPUT OBJECT:
   - Slotting with 4+ flutes at diameter >= 0.5" (chip packing)
   - Bull-nose full-width slot deeper than corner radius x 2
   - Work-hardening alloys (Stainless/Titanium/Superalloy) — keep chip load up
-  - Abrasive composites (CFRP/G10) — rapid wear, diamond-coated recommended
+  - Abrasive composites (CFRP/G10/G11) — rapid wear, diamond-coated recommended; G11 gets an
+    extra note (higher-crosslink resin, DOC already reduced ~12% vs G10)
   - Drilling notes: shallow vs deep hole, very-deep feed reduction,
     hole depth > LOC, carbide pecking risk, work-hardening peck guidance
 
@@ -191,6 +192,7 @@ delrin      | Delrin (POM)             | Plastic      | 400-800  | 1.0  | 0.13 |
 abs         | ABS / Polycarbonate      | Plastic      | 300-600  | 0.9  | 0.14 | 0.9  | 2.0
 cfrp        | Carbon Fiber (CFRP)      | Composite    | 200-450  | 0.6  | 0.28 | 0.6  | 1.5
 g10         | G10 / FR4                | Composite    | 250-500  | 0.7  | 0.25 | 0.7  | 1.7
+g11         | G11 / FR5                | Composite    | 225-450  | 0.7  | 0.28 | 0.62 | 1.5
 
 4.2 TOOL MATERIALS [id | name | sfmMult]
 carbide   | Solid Carbide        | 1.0
