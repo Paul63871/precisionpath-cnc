@@ -248,7 +248,26 @@ export function calculate(input) {
     if (diameter > 0.5) doc = Math.min(doc, diameter * 1.2);
   } else if (op.docMode === "face") {
     woc = diameter;
-    doc = diameter * 0.1 * lerp(0.7, 1.2, agg);
+    if (op.finishing) {
+      // Finish facing: a light, largely diameter-independent skim pass.
+      // Manufacturer/shop sources converge on ~0.005-0.010in (0.12-0.25mm)
+      // regardless of tool diameter — Sandvik Coromant's wiper-insert
+      // guidance (0.5-1.0mm), CNC Cookbook, LatheHub, and shop-practice
+      // consensus on r/Machinists all land in this band:
+      // https://www.sandvik.coromant.com/en-us/knowledge/milling/face-milling
+      // https://www.cnccookbook.com/milling-finish-complete-guide-feeds-speeds-master-class-lesson-7/
+      // Small diameters can't physically take a full 0.010" skim relative to
+      // their own size, so it's still capped at 15% of diameter as a floor
+      // guard for tiny tools (e.g. a 0.0625" end mill facing a small boss).
+      doc = Math.min(lerp(0.005, 0.010, agg), diameter * 0.15);
+    } else {
+      // Rough facing: existing diameter-scaled formula, which lands in the
+      // sourced 0.040-0.120in (~1-3mm) rough-facing band from FastPreci and
+      // PTS Make for typical 0.5-1.5in tools:
+      // https://www.fastpreci.com/blog/comprehensive-guide-to-face-milling/
+      // https://www.ptsmake.com/brass-machining-mastery-10-expert-tactics-for-precision-cost-savings/
+      doc = diameter * 0.1 * lerp(0.7, 1.2, agg);
+    }
   } else if (op.docMode === "hem") {
     // High-Efficiency Machining / adaptive toolpaths. This is a provisional
     // WOC from the material-class target table (aluminum runs much wider

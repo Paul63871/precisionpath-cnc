@@ -247,7 +247,34 @@ export const OPERATIONS = [
   // roughing already uses (cncEngine.js), instead of a bare fixed wocFactor.
   { id: "2d_contour_rough", name: "2D Contour / Peripheral (Rough)", category: "2D", sfmMult: 1.0, chipMult: 1.0, feedMult: 1.0, wocFactor: 0.35, docMode: "profile", adaptive: true, peripheralRough: true },
   { id: "2d_contour_finish", name: "2D Contour / Peripheral (Finish)", category: "2D", sfmMult: 1.1, chipMult: 0.7, feedMult: 1.0, wocFactor: 0.08, docMode: "profile", adaptive: true, finishing: true },
-  { id: "facing", name: "Face", category: "2D", sfmMult: 0.95, chipMult: 1.0, feedMult: 1.0, wocFactor: 1.0, docMode: "face", adaptive: false },
+  // Facing splits into rough and finish, mirroring the contour/adaptive split
+  // above. ISCAR's technical manager (Canadian Metalworking, manufacturer-
+  // authored) states facing width of cut should be 70-80% of the mill
+  // diameter for BOTH roughing and finishing — "this relationship of width
+  // of cut to tool diameter remains the same in both the roughing and
+  // finishing stages" — so wocFactor stays 1.0 (full-width single pass) for
+  // both; only axial depth of cut and feed change between the two.
+  // https://www.canadianmetalworking.com/canadianmetalworking/article/cuttingtools/about-face-milling
+  // Rough facing DOC of ~10% of diameter (existing formula) lands in the
+  // sourced 0.5-4.0mm / 0.040-0.120" band multiple manufacturer/shop sources
+  // give for rough facing passes (FastPreci, PTS Make, Purdue ME363 lab —
+  // "roughing passes should be roughly 0.030-0.050in"):
+  // https://www.fastpreci.com/blog/comprehensive-guide-to-face-milling/
+  // https://www.ptsmake.com/brass-machining-mastery-10-expert-tactics-for-precision-cost-savings/
+  // Finish facing is a light, largely diameter-independent skim pass — many
+  // convergent manufacturer/shop sources cite 0.005-0.010in (0.12-0.25mm)
+  // regardless of tool size, so the finish-face branch below uses a fixed
+  // range rather than a diameter-scaled factor:
+  // https://www.cnccookbook.com/milling-finish-complete-guide-feeds-speeds-master-class-lesson-7/
+  // https://www.sandvik.coromant.com/en-us/knowledge/milling/face-milling (0.5-1.0mm w/ wiper)
+  // https://lathehub.com/1-8-inch-face-mill-feeds-speeds/
+  // https://www.reddit.com/r/Machinists/comments/1dnwe3y/how_to_get_better_surface_finish_with_2_face_mill/
+  // chipMult reduced (lighter feed per tooth improves Ra — CNC Cookbook/
+  // Canadian Metalworking "light depth of cut and conservative feed rate");
+  // sfmMult raised slightly, same rough/finish speed-up pattern already used
+  // by 2d_contour_finish (lighter cut tolerates higher surface speed).
+  { id: "facing_rough", name: "Face (Rough)", category: "2D", sfmMult: 0.95, chipMult: 1.0, feedMult: 1.0, wocFactor: 1.0, docMode: "face", adaptive: false },
+  { id: "facing_finish", name: "Face (Finish)", category: "2D", sfmMult: 1.05, chipMult: 0.65, feedMult: 1.0, wocFactor: 1.0, docMode: "face", adaptive: false, finishing: true },
   { id: "slotting", name: "Slot", category: "2D", sfmMult: 0.8, chipMult: 1.0, feedMult: 1.0, wocFactor: 1.0, docMode: "slot", adaptive: false, slotDerate: true },
   { id: "bore", name: "Circular / Bore", category: "2D", sfmMult: 0.8, chipMult: 1.0, feedMult: 1.0, wocFactor: 1.0, docMode: "slot", adaptive: false, slotDerate: true },
   { id: "thread", name: "Thread Milling", category: "2D", sfmMult: 0.8, chipMult: 0.6, feedMult: 1.0, wocFactor: 0.03, docMode: "profile", adaptive: false },

@@ -81,7 +81,9 @@ INPUT OBJECT:
 
   FACE (docMode === "face"):
     - WOC = diameter
-    - DOC = diameter * 0.1 * lerp(0.7,1.2,agg)
+    - Rough (facing_rough): DOC = diameter * 0.1 * lerp(0.7,1.2,agg)
+    - Finish (facing_finish, op.finishing): DOC = min(lerp(0.005,0.010,agg), diameter*0.15)
+      (light skim pass, ~diameter-independent per manufacturer finish-facing guidance)
 
   HEM / ADAPTIVE (docMode === "hem"):
     - WOC = diameter * op.wocFactor * lerp(0.8,1.1,agg)
@@ -250,7 +252,8 @@ neckDiameter  | length | step 0.001
 2d_adaptive_finish| 2D Adaptive Finishing       | 2D | 1.1 | 0.8 | 1.0 | 0.04 | hem     | true  | -
 2d_pocket        | 2D Pocket                    | 2D | 1.0 | 1.0 | 1.0 | 0.3  | hem     | true  | -
 2d_contour       | 2D Contour                   | 2D | 1.1 | 0.7 | 1.0 | 0.08 | profile | true  | -
-facing           | Face                         | 2D | 0.95| 1.0 | 1.0 | 1.0  | face    | false | -
+facing_rough     | Face (Rough)                 | 2D | 0.95| 1.0 | 1.0 | 1.0  | face    | false | -
+facing_finish    | Face (Finish)                | 2D | 1.05| 0.65| 1.0 | 1.0  | face    | false | finishing
 slotting         | Slot                         | 2D | 0.9 | 1.0 | 1.0 | 1.0  | slot    | false | -
 bore             | Circular / Bore              | 2D | 0.9 | 1.0 | 1.0 | 1.0  | slot    | false | -
 thread           | Thread Milling               | 2D | 0.8 | 0.6 | 1.0 | 0.03 | profile | false | -
