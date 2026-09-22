@@ -42,15 +42,19 @@ function plausibilityCheck(res) {
   return flags;
 }
 
-// Maps the LLM's free-text jaw_type description to a WORKHOLDING_JAW_TYPES
-// id (cncData.js) so the friction coefficient updates along with the force,
-// not just the number. Defaults to smooth_steel (the conservative case) when
-// the description doesn't clearly indicate a grippier jaw style.
-function guessJawTypeId(jawTypeText) {
-  const t = (jawTypeText || "").toLowerCase();
-  if (t.includes("serrat") || t.includes("waffle") || t.includes("pyramid")) return "serrated";
-  if (t.includes("soft") || t.includes("conform")) return "soft_jaw";
-  if (t.includes("diamond") || t.includes("grip")) return "grippy_plate";
+// Maps the LLM's structured standard_jaw_type field (not the free-text
+// jaw_type description, which can mention optional/accessory jaw styles in
+// the same sentence as the standard one and cause false matches) to a
+// WORKHOLDING_JAW_TYPES id (cncData.js) so the friction coefficient updates
+// along with the force, not just the number. Defaults to smooth_steel (the
+// conservative, lowest-friction case) whenever the field is missing or
+// doesn't cleanly match — under-estimating grip is the safe failure
+// direction for a warning system, never over-estimating it.
+function guessJawTypeId(standardJawType) {
+  const t = (standardJawType || "").toLowerCase().trim();
+  if (t === "serrated") return "serrated";
+  if (t === "soft_jaw") return "soft_jaw";
+  if (t === "grippy_plate") return "grippy_plate";
   return "smooth_steel";
 }
 
@@ -91,7 +95,7 @@ Model / part number: ${model || "unspecified"}${torqueNote}
 
 STEP 1 — Find the product page or spec sheet: Search the web for the manufacturer's official product page, spec sheet, or installation manual for this exact vise model (e.g. "Kurt D688 clamping force", "Kurt DX6 manual clamping force chart"). Manufacturers like Kurt, Gerardi, Chick, TE-CO, Orange Vise, and Toolex all publish clamping-force-vs-torque charts or a single maximum clamping force spec.
 
-STEP 2 — Identify the vise: From the real product page, extract the exact model name/number, jaw width, and jaw type (smooth/serrated/soft-jaw — state what ships standard).
+STEP 2 — Identify the vise: From the real product page, extract the exact model name/number and jaw width. Also determine the STANDARD jaw type this model SHIPS WITH by default (not optional/accessory jaws sold separately) and classify it into exactly one of these four categories for standard_jaw_type: "smooth_steel" (plain/smooth hardened steel jaws, the default for most general-purpose vises like Kurt D-series/DX6), "serrated" (serrated/waffle/pyramid-pattern jaws), "soft_jaw" (soft aluminum/conformal jaws bored to the part), "grippy_plate" (diamond-coated or similar high-friction plates). If the page mentions serrated or soft jaws only as an optional accessory/add-on rather than what ships standard, still classify standard_jaw_type as "smooth_steel" and mention the optional accessory in jaw_type/notes instead.
 
 STEP 3 — Clamping force: Manufacturers often publish clamping force as a TABLE vs handle torque (e.g. "60 ft-lbs -> 5,391 lbf") rather than one fixed number. If the user gave an applied torque, read the table at (or interpolated near) that torque and report that as clamp_force_lbf, and set the torque you used as rated_torque_ftlb. If no torque was given, or no table exists, report the manufacturer's MAXIMUM rated clamping force at their recommended/max torque as clamp_force_lbf, and rated_torque_ftlb as the torque that maximum corresponds to. Always report force in POUNDS-FORCE (lbf) — if the source publishes kN, convert (1 kN = 224.8 lbf) and note the conversion in notes.
 
@@ -113,6 +117,7 @@ RULES:
             brand_name: { type: "string" },
             jaw_width_in: { type: "number" },
             jaw_type: { type: "string" },
+            standard_jaw_type: { type: "string", enum: ["smooth_steel", "serrated", "soft_jaw", "grippy_plate"] },
             clamp_force_lbf: { type: "number" },
             rated_torque_ftlb: { type: "number" },
             is_max_rating: { type: "boolean" },
@@ -206,7 +211,7 @@ RULES:
                   size="sm"
                   variant={flags.length === 0 ? "default" : "outline"}
                   className="w-full h-8 mt-1"
-                  onClick={() => onApply({ clampForce: Math.round(result.clamp_force_lbf), jawTypeId: guessJawTypeId(result.jaw_type) })}
+                  onClick={() => onApply({ clampForce: Math.round(result.clamp_force_lbf), jawTypeId: guessJawTypeId(result.standard_jaw_type) })}
                 >
                   {flags.length > 0 ? "Apply anyway (unverified)" : "Apply to calculator"}
                 </Button>
