@@ -29,7 +29,7 @@ INPUT OBJECT:
   override? { sfm, chipLoad },
   machine { hp, maxRpm, minRpm, maxIpm },
   leadAngle, cornerRadius, includedAngle, tipDiameter, thickness, neckDiameter,
-  pointAngle, radialLoad, axialDoc, featureDepth
+  pointAngle, radialLoad, axialDoc, featureDepth, gripDepth
 
 3.1 SURFACE SPEED (SFM)
   - If override.sfm exists:  SFM = override.sfm * op.sfmMult
@@ -104,6 +104,25 @@ INPUT OBJECT:
         stepdown = featureDepth / passes
         doc = stepdown  (per-pass depth never exceeds feature depth)
 
+  WORKHOLDING OVERHANG (gripDepth, profile/hem/peripheralRough ops only):
+    - Workpiece-side rigidity check, NOT tool stickout. gripDepth = how much
+      of the part height the vise/chuck/fixture actually clamps (optional
+      user input). cutHeight = featureDepth if set, else loc.
+    - if gripDepth > 0 && cutHeight > 0:
+        unsupported = max(0, cutHeight - gripDepth)
+        ratio = unsupported / gripDepth
+        severity = "none" (unsupported<=0) | "low" (ratio<=0.5) |
+                   "moderate" (0.5 < ratio <= 1.0) | "high" (ratio > 1.0)
+    - Physical basis: above the grip line the workpiece itself becomes the
+      cantilever the cutting forces act on (same L^3 deflection scaling as
+      tool stickout, just on the part side). LANG Technik's published vise-
+      sizing rule of thumb caps workpiece height at ~2x the jaw/grip
+      dimension, implying unsupported:grip ~1.0 is the practical ceiling for
+      typical loads: https://lang-technik.de/en/service/faq/workholding
+    - No manufacturer source gives a numeric feed/speed derate for this
+      ratio, so it stays a quantified WARNING (see 3.11) rather than an
+      automatic doc/woc/feed reduction.
+
 3.5 FEED MULTIPLIERS (CHIP THINNING)
   - feedMult = op.feedMult
   - Lead-angle (axial) chip thinning (face mill, leadAngle < 90 deg):
@@ -141,7 +160,8 @@ INPUT OBJECT:
   passes, stepdown,
   drilling { holeDepth, depthRatio, cycle, peckDepth, peckCount, retract, dwell,
              notes[] },
-  radialThinningFactor, radialEngagementPct (%), adaptive (bool), warnings[]
+  radialThinningFactor, radialEngagementPct (%), adaptive (bool),
+  overhang { unsupportedHeight, gripDepth, ratio, severity } | null, warnings[]
 
 3.11 WARNINGS GENERATED
   - Lead-angle / radial chip-thinning notes (informational)
@@ -149,6 +169,8 @@ INPUT OBJECT:
   - Spindle min/max RPM clamped (with direction)
   - Machine max IPM limiting feed
   - Per-pass DOC > flute LOC (chip evacuation risk)
+  - Workholding overhang: unsupported workpiece height above the grip is
+    moderate (0.5-1.0x grip depth) or high (>1.0x grip depth) — see 3.4
   - Slotting with 4+ flutes at diameter >= 0.5" (chip packing)
   - Bull-nose full-width slot deeper than corner radius x 2
   - Work-hardening alloys (Stainless/Titanium/Superalloy) — keep chip load up

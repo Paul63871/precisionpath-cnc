@@ -53,7 +53,7 @@ export default function Calculator() {
   const [saveName, setSaveName] = useState("");
   const [saving, setSaving] = useState(false);
   const [override, setOverride] = useState(null);
-  const [adaptive, setAdaptive] = useState({ radialLoad: 0, axialDoc: 0, featureDepth: 0, fineStepup: 0 });
+  const [adaptive, setAdaptive] = useState({ radialLoad: 0, axialDoc: 0, featureDepth: 0, fineStepup: 0, gripDepth: 0 });
   const [prefId, setPrefId] = useState(null);
 
   // Load preferences, custom materials, and machine profiles on mount.
@@ -122,6 +122,7 @@ export default function Calculator() {
       tipDiameter: tool.tipDiameter, thickness: tool.thickness, neckDiameter: tool.neckDiameter, pointAngle: tool.pointAngle,
       radialLoad: adaptive.radialLoad, axialDoc: adaptive.axialDoc, featureDepth: adaptive.featureDepth,
       threadId: tool.threadId, tapStyle: tool.tapStyle, pitch: tool.pitch, holeType: tool.holeType,
+      gripDepth: adaptive.gripDepth,
     });
   }, [tool, selectedMaterial, operationId, aggressiveness, machine, override, adaptive]);
 
@@ -176,6 +177,20 @@ export default function Calculator() {
                   <Label className="text-xs text-muted-foreground">Axial DOC / pass ({UNITS[units].length})</Label>
                   <NumberField className="h-9" allowClear placeholder="Auto" value={adaptive.axialDoc || undefined} onValueChange={(n) => setAdaptive((a) => ({ ...a, axialDoc: n || 0 }))} />
                 </div>
+                {(selectedOp?.docMode === "profile" || selectedOp?.docMode === "hem" || selectedOp?.peripheralRough) && (
+                  <div className="space-y-1.5 col-span-2">
+                    <Label className="text-xs text-muted-foreground">Workholding Grip Depth ({UNITS[units].length})</Label>
+                    <NumberField className="h-9" allowClear placeholder="Auto (no check)" value={adaptive.gripDepth || undefined} onValueChange={(n) => setAdaptive((a) => ({ ...a, gripDepth: n || 0 }))} />
+                    <p className="text-[11px] text-muted-foreground leading-relaxed">
+                      How much of the part height is actually clamped — vise jaw height, soft-jaw step, or chuck grip. Leave blank to skip. If the feature depth above extends past this, the calculator warns when the unclamped workpiece itself — not the tool — becomes the flexible cantilever.
+                    </p>
+                    {result?.overhang && result.overhang.severity !== "none" && (
+                      <p className={`text-[11px] leading-relaxed font-medium ${result.overhang.severity === "high" ? "text-destructive" : "text-amber-600"}`}>
+                        {result.overhang.unsupportedHeight} {UNITS[units].length} of this cut is unsupported above the grip ({result.overhang.ratio}× the grip depth).
+                      </p>
+                    )}
+                  </div>
+                )}
                 {selectedOp?.adaptive && (
                   <div className="space-y-1.5 col-span-2">
                     <Label className="text-xs text-muted-foreground">Optimal Load — max stepover ({UNITS[units].length})</Label>

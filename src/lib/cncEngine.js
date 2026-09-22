@@ -9,13 +9,15 @@ import {
 // { diameter (in), flutes (feed count), loc (in), toolMaterialId, coatingId, toolTypeId,
 //   materialId, operationId, aggressiveness (0..1), override?,
 //   machine: { hp, maxRpm, minRpm, maxIpm },
-//   leadAngle, cornerRadius, includedAngle, tipDiameter, thickness, neckDiameter, pointAngle }
+//   leadAngle, cornerRadius, includedAngle, tipDiameter, thickness, neckDiameter, pointAngle,
+//   gripDepth (in) — optional: how much of the part height is actually clamped
+//   in the workholding (vise jaw height, chuck depth, fixture pad height, etc.) }
 export function calculate(input) {
   const {
     diameter, flutes, loc, toolMaterialId, coatingId, toolTypeId,
     material, materialId, operationId, aggressiveness = 0.6, machine, override,
     leadAngle, cornerRadius, includedAngle, tipDiameter, thickness, neckDiameter, pointAngle,
-    radialLoad, axialDoc, featureDepth, threadId, tapStyle, holeType,
+    radialLoad, axialDoc, featureDepth, threadId, tapStyle, holeType, gripDepth,
   } = input;
 
   const mat = material || PART_MATERIALS.find((m) => m.id === materialId) || PART_MATERIALS[0];
@@ -376,6 +378,56 @@ export function calculate(input) {
     doc = stepdown; // actual per-pass depth never exceeds the feature depth
   }
 
+  // --- Workholding overhang (workpiece-side rigidity, NOT tool stickout) ---
+  // gripDepth is how much of the part height the vise jaws / chuck / fixture
+  // actually clamp. When a feature (an outside contour, a tall boss, a wall)
+  // is cut above that grip line, the UNCLAMPED workpiece itself becomes the
+  // cantilever the cutting forces act on — physically the same cantilever-
+  // beam problem as tool stickout (deflection scales with the CUBE of the
+  // unsupported length: δ = FL³/3EI), just on the part side of the interface
+  // instead of the tool side:
+  // https://online-tools.work/metal/en/tool-deflection
+  // https://formulafactory.tools/cnc-calculators/tool-deflection-calculator/
+  // A full-LOC 2D contour/adaptive pass run around the OUTSIDE of a part that
+  // is only gripped for a fraction of that height is exactly this case — the
+  // engine has no way to see the fixture, so this only activates when the
+  // user tells it how tall the grip is (gripDepth). Precision-vise
+  // manufacturer LANG Technik's published workholding rule of thumb states
+  // "maximum height = 2x jaw width" for a workpiece held in a standard vise
+  // ("depending on the material and cutting forces, the maximum size can be
+  // significantly larger or somewhat smaller") — i.e. total part height
+  // above the table should not exceed ~2x the grip/jaw dimension, which
+  // means the UNSUPPORTED portion above the jaw should stay at or below
+  // roughly 1x the grip depth for typical cutting loads:
+  // https://lang-technik.de/en/service/faq/workholding
+  // Independently, thin-wall/cantilever machining guidance (Xometry's CNC
+  // design guide, ynypm.com, and the University of Huddersfield thin-wall
+  // review) all converge on "reduce radial width of cut before reducing
+  // axial depth" and "take multiple lighter passes" as the practical fix
+  // once a feature gets tall/flexible relative to its support, rather than
+  // a single full-engagement pass:
+  // https://www.xometry.com/resources/machining/cnc-machining-thin-walls/
+  // https://www.ynypm.com/news/industry-knowledge/cnc-machining/CNC-milling-chatter-problems-that-show-up-in-thin-walls.html
+  // No manufacturer source gives a numeric feed/speed derate for a given
+  // overhang ratio (LANG's page stops at the sizing rule of thumb, no feed
+  // table), so this stays a quantified WARNING rather than an invented
+  // silent multiplier on doc/woc/feed — the user sizes the actual response
+  // (usually rigid fixturing, roughing to a stub + finishing after
+  // re-fixturing, or a lighter radial stepover) using the numbers below,
+  // exactly the same reasoning already applied to sfmCapped/hpGovernorNote.
+  let overhang = null;
+  const cutHeight = featureDepth && featureDepth > 0 ? featureDepth : (loc || 0);
+  if (gripDepth && gripDepth > 0 && cutHeight > 0 && (op.docMode === "profile" || op.docMode === "hem" || op.peripheralRough)) {
+    const unsupported = Math.max(0, cutHeight - gripDepth);
+    const ratio = unsupported / gripDepth; // unsupported : grip — LANG's 2x-height rule implies ~1.0 is the practical ceiling
+    overhang = {
+      unsupportedHeight: Number(unsupported.toFixed(3)),
+      gripDepth: Number(gripDepth.toFixed(3)),
+      ratio: Number(ratio.toFixed(2)),
+      severity: unsupported <= 0 ? "none" : ratio > 1.0 ? "high" : ratio > 0.5 ? "moderate" : "low",
+    };
+  }
+
   // --- Ball nose effective cutting diameter ---
   // A ball nose only cuts at full diameter when the axial depth of cut (doc)
   // is at least the ball radius. At shallower doc — the normal case for 3D
@@ -603,6 +655,8 @@ export function calculate(input) {
   if (rpmClamped) warnings.push(rpm > rpmIdeal ? `Spindle minimum forced RPM above ideal — reduce SFM or use smaller tool.` : `Spindle max RPM reached — ideal ${Math.round(rpmIdeal)} RPM. Increase SFM or use larger diameter.`);
   if (ipmClamped) warnings.push(`Machine max feed (${m.maxIpm} IPM) limits the programmed feed.`);
   if (loc && (op.docMode === "profile" || op.docMode === "hem") && doc > loc) warnings.push(`Per-pass axial DOC (${doc.toFixed(3)}") exceeds flute LOC (${loc}") — confirm chip evacuation.`);
+  if (overhang && overhang.severity === "high") warnings.push(`Workholding: ${overhang.unsupportedHeight}" of this cut is above your ${overhang.gripDepth}" grip depth (${overhang.ratio}x the grip) — the workpiece itself is now the flexible cantilever, not just the tool. LANG Technik's vise-sizing rule of thumb caps workpiece height at ~2x the jaw/grip dimension for this reason. Rough to a support stub and finish after re-fixturing, use a taller vise step/soft jaws, add a tailstock or steady support, or cut in from the top down instead of a single full-height pass around the outside.`);
+  else if (overhang && overhang.severity === "moderate") warnings.push(`Workholding: ${overhang.unsupportedHeight}" of this cut is above your ${overhang.gripDepth}" grip depth (${overhang.ratio}x the grip) — getting close to the point where the workpiece, not the tool, starts flexing. Consider a lighter radial stepover or an extra finishing pass on this feature if you see chatter or a tapered wall.`);
   if (op.docMode === "slot" && diameter >= 0.5 && flutes >= 4) warnings.push("Slotting with 4+ flutes at this diameter risks chip packing — consider 2-3 flutes or air blast.");
   if (tt.id === "bull_nose" && cornerRadius && op.docMode === "slot" && doc > cornerRadius * 2) warnings.push("Bull-nose full-width slotting deeper than the corner radius — chip evacuation at the radius is tight; peck or reduce DOC.");
   if (mat.category === "Stainless" || mat.category === "Titanium" || mat.category === "Superalloy") warnings.push("Work hardening / heat-sensitive alloy — keep chip load up, avoid rubbing, use coolant or air.");
@@ -644,6 +698,7 @@ export function calculate(input) {
     effectiveDiameter: Number(effectiveDiameter.toFixed(3)),
     ballFeedCompensation: Number(ballFeedCompensation.toFixed(3)),
     sfmCapped,
+    overhang,
     warnings,
   };
 }
