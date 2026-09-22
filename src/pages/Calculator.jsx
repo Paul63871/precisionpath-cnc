@@ -9,12 +9,13 @@ import ResultsPanel from "@/components/cnc/ResultsPanel";
 import BrandLookup from "@/components/cnc/BrandLookup";
 import UnitsToggle from "@/components/cnc/UnitsToggle";
 import { calculate } from "@/lib/cncEngine";
-import { PART_MATERIALS, TOOL_TYPES, OPERATIONS } from "@/lib/cncData";
+import { PART_MATERIALS, TOOL_TYPES, OPERATIONS, WORKHOLDING_JAW_TYPES } from "@/lib/cncData";
 import { UNITS, lenFromImp, lenToImp } from "@/lib/units";
 import NumberField from "@/components/NumberField";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import ResponsiveSelect from "@/components/cnc/ResponsiveSelect";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 
 const DEFAULT_TOOL = { toolTypeId: "end_mill", toolMaterialId: "carbide", coatingId: "altin", diameter: 0.25, flutes: 3, loc: 0.75, inserts: 4, cornerRadius: 0.03, includedAngle: 90, tipDiameter: 0, leadAngle: 45, pointAngle: 118, thickness: 0.0625, neckDiameter: 0, threadId: "unc_1_4_20", tapStyle: "spiral_point", holeType: "through" };
@@ -53,7 +54,7 @@ export default function Calculator() {
   const [saveName, setSaveName] = useState("");
   const [saving, setSaving] = useState(false);
   const [override, setOverride] = useState(null);
-  const [adaptive, setAdaptive] = useState({ radialLoad: 0, axialDoc: 0, featureDepth: 0, fineStepup: 0, gripDepth: 0 });
+  const [adaptive, setAdaptive] = useState({ radialLoad: 0, axialDoc: 0, featureDepth: 0, fineStepup: 0, gripDepth: 0, jawTypeId: "smooth_steel", clampForce: 0 });
   const [prefId, setPrefId] = useState(null);
 
   // Load preferences, custom materials, and machine profiles on mount.
@@ -123,6 +124,7 @@ export default function Calculator() {
       radialLoad: adaptive.radialLoad, axialDoc: adaptive.axialDoc, featureDepth: adaptive.featureDepth,
       threadId: tool.threadId, tapStyle: tool.tapStyle, pitch: tool.pitch, holeType: tool.holeType,
       gripDepth: adaptive.gripDepth,
+      jawTypeId: adaptive.jawTypeId, clampForce: adaptive.clampForce,
     });
   }, [tool, selectedMaterial, operationId, aggressiveness, machine, override, adaptive]);
 
@@ -191,6 +193,33 @@ export default function Calculator() {
                     )}
                   </div>
                 )}
+                <div className="space-y-1.5 col-span-2 pt-2 border-t border-border/60">
+                  <Label className="text-xs text-muted-foreground">Vise / Fixture Clamping</Label>
+                  <p className="text-[11px] text-muted-foreground leading-relaxed -mt-1">
+                    Checks whether the vise has enough grip to resist the cutting force itself — the part sliding or pulling out under load — for any operation, not just contour/adaptive paths. Independent of the grip-depth check above, which covers tipping/deflection.
+                  </p>
+                  <div className="grid grid-cols-2 gap-3 pt-1">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs text-muted-foreground">Jaw Type</Label>
+                      <ResponsiveSelect
+                        className="h-9"
+                        value={adaptive.jawTypeId || "smooth_steel"}
+                        onValueChange={(v) => setAdaptive((a) => ({ ...a, jawTypeId: v }))}
+                        options={WORKHOLDING_JAW_TYPES.map((j) => ({ value: j.id, label: j.name }))}
+                        placeholder="Jaw type"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs text-muted-foreground">Vise Rated Clamp Force (lbf)</Label>
+                      <NumberField className="h-9" allowClear placeholder="Optional" value={adaptive.clampForce || undefined} onValueChange={(n) => setAdaptive((a) => ({ ...a, clampForce: n || 0 }))} />
+                    </div>
+                  </div>
+                  {result?.workholding && (
+                    <p className={`text-[11px] leading-relaxed font-medium ${result.workholding.insufficient ? "text-destructive" : "text-muted-foreground"}`}>
+                      Needs ~{Math.round(result.workholding.requiredClampForce)} lbf of clamping force ({Math.round(result.workholding.cuttingForce)} lbf cutting force × {result.workholding.safetyFactor}× safety ÷ {result.workholding.mu} friction){result.workholding.ratedClampForce ? ` — vise rated for ${Math.round(result.workholding.ratedClampForce)} lbf${result.workholding.insufficient ? ", not enough" : ", OK"}.` : ". Enter your vise's rating above to check it directly."}
+                    </p>
+                  )}
+                </div>
                 {selectedOp?.adaptive && (
                   <div className="space-y-1.5 col-span-2">
                     <Label className="text-xs text-muted-foreground">Optimal Load — max stepover ({UNITS[units].length})</Label>

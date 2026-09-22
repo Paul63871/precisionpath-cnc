@@ -444,6 +444,24 @@ export const HOLE_TYPES = [
   { id: "blind", name: "Blind Hole" },
 ];
 
+// Vise/fixture jaw friction coefficients (mu), used to convert a computed
+// cutting force into the clamping force actually needed to prevent the part
+// slipping/pulling out under load. "dry" is the default (worst case for
+// grip); "wet" (flood coolant pooling at the jaw face) is applied as a note
+// only, since machally.com's own guidance is that coolant residue can drop
+// mu by roughly 30%, which is a REDUCTION in available grip — using dry mu
+// as the default is the conservative (safe) choice for a warning system.
+// Source (independent workholding-focused technical writeup, cites
+// Sandvik/Kennametal application data for the force side of the same
+// calculation used below in cncEngine.js):
+// https://machally.com/us/blog/workholding-clamping-force-calculation/
+export const WORKHOLDING_JAW_TYPES = [
+  { id: "smooth_steel", name: "Smooth hard jaw (steel/aluminum part)", mu: 0.20 },
+  { id: "serrated", name: "Serrated / waffle / pyramid jaw", mu: 0.50 },
+  { id: "soft_jaw", name: "Soft jaw, bored/conformal to part", mu: 0.50 },
+  { id: "grippy_plate", name: "Diamond-coated / grippy plate", mu: 0.65 },
+];
+
 // Common thread designations: major diameter (in) and pitch (in/rev = 1/TPI
 // for UNC/UNF, mm/rev converted to inches for metric). TPI kept for UI
 // display on unified threads. Metric entries store pitchMm for display too.

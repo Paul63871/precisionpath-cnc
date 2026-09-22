@@ -2,7 +2,7 @@ import {
   PART_MATERIALS, TOOL_MATERIALS, TOOL_MATERIAL_CLASS_MULT, COATINGS,
   TOOL_TYPES, OPERATIONS, WOC_CLASS_TARGETS, PERIPHERAL_ROUGH_WOC_TARGETS,
   TAP_SFM_BY_CLASS, TAP_TOOL_MATERIAL_MULT, TAP_STYLES, HOLE_TYPES, THREAD_TABLE,
-  tapDrillSize, baseChipLoad, lerp, clamp,
+  WORKHOLDING_JAW_TYPES, tapDrillSize, baseChipLoad, lerp, clamp,
 } from "./cncData";
 
 // input shape:
@@ -11,13 +11,17 @@ import {
 //   machine: { hp, maxRpm, minRpm, maxIpm },
 //   leadAngle, cornerRadius, includedAngle, tipDiameter, thickness, neckDiameter, pointAngle,
 //   gripDepth (in) — optional: how much of the part height is actually clamped
-//   in the workholding (vise jaw height, chuck depth, fixture pad height, etc.) }
+//   in the workholding (vise jaw height, chuck depth, fixture pad height, etc.),
+//   jawTypeId — optional: WORKHOLDING_JAW_TYPES id, selects friction coefficient,
+//   clampForce (lbf) — optional: the vise/fixture's actual rated clamping force,
+//   used to give a direct pass/fail instead of just reporting the requirement }
 export function calculate(input) {
   const {
     diameter, flutes, loc, toolMaterialId, coatingId, toolTypeId,
     material, materialId, operationId, aggressiveness = 0.6, machine, override,
     leadAngle, cornerRadius, includedAngle, tipDiameter, thickness, neckDiameter, pointAngle,
     radialLoad, axialDoc, featureDepth, threadId, tapStyle, holeType, gripDepth,
+    jawTypeId, clampForce,
   } = input;
 
   const mat = material || PART_MATERIALS.find((m) => m.id === materialId) || PART_MATERIALS[0];
@@ -645,6 +649,55 @@ export function calculate(input) {
     hpRequired = hpAtCutter; // clean up float noise just over the limit without a note
   }
 
+  // --- Workholding: required clamping force (slip / pull-out check) ---
+  // Distinct from the deflection-style "overhang" check above: this is
+  // whether the vise/fixture has enough grip AT ALL to keep the part from
+  // sliding or being pulled out under the cutting load — the actual failure
+  // mode reported from the shop floor (full 2" LOC cut, part gripped only
+  // 0.25" per side, part pulled out of the vise mid-program). Runs for every
+  // real milling cut (not drilling/tapping, which load the part axially into
+  // the table/vise base rather than sideways against the jaws).
+  //
+  // Tangential cutting force from the horsepower this engine already
+  // computed, using the standard shop formula (Tooling World "Calculating
+  // the Clamping Force for Machining", itself citing the Machinability Data
+  // Handbook's unit-power method — the same hpRequired/mat.hpFactor this
+  // engine already uses elsewhere):
+  //   Fc (lbf) = hpRequired * 33000 (ft-lb/min/hp) / SFM (ft/min)
+  // http://www.toolingworld.com/sites/default/files/CLAMPING_FORCE_FOR_MACHINING.pdf
+  //
+  // Required clamping force to prevent slip, with a safety factor:
+  //   F_clamp >= (Fc * n) / mu
+  // mu = jaw friction coefficient (WORKHOLDING_JAW_TYPES, cncData.js) —
+  // defaults to smooth-jaw dry (mu=0.20, the conservative/lower-grip case)
+  // when the user hasn't specified a jaw type. n = safety factor, 2-5x per
+  // both sourced references below; this engine uses 3x for continuous
+  // engagement (contour/adaptive/pocket/face) and 4x for full-radial/
+  // interrupted engagement (slotting, boring a slot-style hole) — both
+  // squarely inside the sourced ranges, not picked arbitrarily:
+  // https://machally.com/us/blog/workholding-clamping-force-calculation/
+  // (continuous milling n=2.0-3.0, slot milling full radial n=2.5-3.5,
+  //  interrupted/entry-exit shock n=3.0-5.0)
+  let workholding = null;
+  if (hpAtCutter > 0 && sfm > 0 && op.docMode !== "drill" && op.docMode !== "tap" && !tt.isDrill && !tt.isTap) {
+    const jaw = WORKHOLDING_JAW_TYPES.find((j) => j.id === jawTypeId) || WORKHOLDING_JAW_TYPES[0];
+    const cuttingForce = (hpRequired * 33000) / sfm; // lbf
+    const safetyFactor = op.slotDerate ? 4 : 3;
+    const requiredClampForce = (cuttingForce * safetyFactor) / jaw.mu;
+    const ratedClampForce = clampForce && clampForce > 0 ? clampForce : null;
+    const clampMargin = ratedClampForce ? ratedClampForce / requiredClampForce : null;
+    workholding = {
+      cuttingForce: Number(cuttingForce.toFixed(1)),
+      requiredClampForce: Number(requiredClampForce.toFixed(1)),
+      ratedClampForce,
+      clampMargin: clampMargin != null ? Number(clampMargin.toFixed(2)) : null,
+      jawTypeId: jaw.id,
+      mu: jaw.mu,
+      safetyFactor,
+      insufficient: ratedClampForce != null && clampMargin < 1.0,
+    };
+  }
+
   // --- Warnings ---
   const warnings = [...thinningNotes];
   if (sfmCapped) warnings.push(`SFM capped at ${Math.round(sfmHardCap)} (105% of ${mat.name}'s published range) — the stacked aggressiveness/operation/coating multipliers wanted a higher speed than this material and coating can realistically sustain.`);
@@ -657,6 +710,8 @@ export function calculate(input) {
   if (loc && (op.docMode === "profile" || op.docMode === "hem") && doc > loc) warnings.push(`Per-pass axial DOC (${doc.toFixed(3)}") exceeds flute LOC (${loc}") — confirm chip evacuation.`);
   if (overhang && overhang.severity === "high") warnings.push(`Workholding: ${overhang.unsupportedHeight}" of this cut is above your ${overhang.gripDepth}" grip depth (${overhang.ratio}x the grip) — the workpiece itself is now the flexible cantilever, not just the tool. LANG Technik's vise-sizing rule of thumb caps workpiece height at ~2x the jaw/grip dimension for this reason. Rough to a support stub and finish after re-fixturing, use a taller vise step/soft jaws, add a tailstock or steady support, or cut in from the top down instead of a single full-height pass around the outside.`);
   else if (overhang && overhang.severity === "moderate") warnings.push(`Workholding: ${overhang.unsupportedHeight}" of this cut is above your ${overhang.gripDepth}" grip depth (${overhang.ratio}x the grip) — getting close to the point where the workpiece, not the tool, starts flexing. Consider a lighter radial stepover or an extra finishing pass on this feature if you see chatter or a tapered wall.`);
+  if (workholding && workholding.insufficient) warnings.push(`Workholding: this cut needs ~${Math.round(workholding.requiredClampForce)} lbf of clamping force (${Math.round(workholding.cuttingForce)} lbf cutting force x ${workholding.safetyFactor}x safety factor ÷ ${workholding.mu} friction) but the vise is only rated for ${Math.round(workholding.ratedClampForce)} lbf — the part can slip or pull out under this load, exactly like a full-LOC cut on a shallow grip. Reduce DOC/WOC/feed, switch to serrated or soft jaws for more grip, or add a second point of support (tailstock, strap, stop block) before running this program.`);
+  else if (workholding && !workholding.ratedClampForce && overhang && (overhang.severity === "moderate" || overhang.severity === "high")) warnings.push(`Workholding: this cut needs an estimated ~${Math.round(workholding.requiredClampForce)} lbf of clamping force (${Math.round(workholding.cuttingForce)} lbf cutting force x ${workholding.safetyFactor}x safety factor ÷ ${workholding.mu} friction, ${WORKHOLDING_JAW_TYPES.find((j)=>j.id===workholding.jawTypeId)?.name.toLowerCase()}) — enter your vise's rated clamping force to check it against this number directly, especially combined with the shallow grip depth flagged above.`);
   if (op.docMode === "slot" && diameter >= 0.5 && flutes >= 4) warnings.push("Slotting with 4+ flutes at this diameter risks chip packing — consider 2-3 flutes or air blast.");
   if (tt.id === "bull_nose" && cornerRadius && op.docMode === "slot" && doc > cornerRadius * 2) warnings.push("Bull-nose full-width slotting deeper than the corner radius — chip evacuation at the radius is tight; peck or reduce DOC.");
   if (mat.category === "Stainless" || mat.category === "Titanium" || mat.category === "Superalloy") warnings.push("Work hardening / heat-sensitive alloy — keep chip load up, avoid rubbing, use coolant or air.");
@@ -699,6 +754,7 @@ export function calculate(input) {
     ballFeedCompensation: Number(ballFeedCompensation.toFixed(3)),
     sfmCapped,
     overhang,
+    workholding,
     warnings,
   };
 }

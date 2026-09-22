@@ -29,7 +29,7 @@ INPUT OBJECT:
   override? { sfm, chipLoad },
   machine { hp, maxRpm, minRpm, maxIpm },
   leadAngle, cornerRadius, includedAngle, tipDiameter, thickness, neckDiameter,
-  pointAngle, radialLoad, axialDoc, featureDepth, gripDepth
+  pointAngle, radialLoad, axialDoc, featureDepth, gripDepth, jawTypeId, clampForce
 
 3.1 SURFACE SPEED (SFM)
   - If override.sfm exists:  SFM = override.sfm * op.sfmMult
@@ -123,6 +123,46 @@ INPUT OBJECT:
       ratio, so it stays a quantified WARNING (see 3.11) rather than an
       automatic doc/woc/feed reduction.
 
+  CLAMPING FORCE / SLIP-PULLOUT CHECK (jawTypeId, clampForce; ALL milling
+  ops, NOT restricted to profile/hem/peripheralRough — runs for slotting,
+  pocketing, facing, adaptive, contour, everything except drill/tap):
+    - Distinct failure mode from WORKHOLDING OVERHANG above: overhang is a
+      geometric tipping/deflection PROXY (no sourced moment formula exists);
+      this check is a direct FORCE balance — does the vise have enough grip
+      at all to keep the part from sliding/pulling out under the actual
+      cutting load, independent of part height or grip depth.
+    - cuttingForce (lbf) = (hpRequired * 33000) / sfm
+      Standard shop formula bridging horsepower to tangential cutting force,
+      using hpRequired/sfm this engine already computes (post HP-governor).
+      Source: Tooling World "Calculating the Clamping Force for Machining"
+      http://www.toolingworld.com/sites/default/files/CLAMPING_FORCE_FOR_MACHINING.pdf
+      Independently corroborated (same Fc = HP*33000/V relationship):
+      https://www.mitsubishicarbide.net/contents/mhg/enuk/html/product/technical_information/information/formula4.html
+      https://ctemag.com/articles/understanding-tangential-cutting-force-when-milling/
+    - jaw = WORKHOLDING_JAW_TYPES lookup (cncData.js), default smooth_steel
+      (mu=0.20) when jawTypeId unset — the conservative/lower-grip default:
+        smooth_steel (mu=0.20), serrated (mu=0.50), soft_jaw (mu=0.50),
+        grippy_plate (mu=0.65)
+    - safetyFactor = 4 if op.slotDerate (full-radial/interrupted engagement:
+      slotting, boring) else 3 (continuous engagement: contour, adaptive,
+      pocket, face) — both inside the sourced 2-5x range.
+    - requiredClampForce = (cuttingForce * safetyFactor) / jaw.mu
+    - if clampForce (user's vise rating) provided:
+        clampMargin = clampForce / requiredClampForce
+        insufficient = clampMargin < 1.0
+      else: ratedClampForce/clampMargin = null, insufficient = false (still
+      reports the requirement as an estimate for the machinist to compare).
+    - Source for the full slip-prevention formula chain, friction
+      coefficients, and safety-factor ranges by operation type:
+      https://machally.com/us/blog/workholding-clamping-force-calculation/
+      (continuous milling n=2.0-3.0, slot milling full radial n=2.5-3.5,
+       interrupted/entry-exit shock n=3.0-5.0; smooth jaw/steel mu=0.15-0.25,
+       serrated/waffle mu=0.40-0.60)
+    - Skipped entirely for drilling/tapping (op.docMode drill/tap or
+      tt.isDrill/isTap) — those load the part axially into the table/vise
+      base, not sideways against the jaws, so this specific slip mode
+      doesn't apply the same way.
+
 3.5 FEED MULTIPLIERS (CHIP THINNING)
   - feedMult = op.feedMult
   - Lead-angle (axial) chip thinning (face mill, leadAngle < 90 deg):
@@ -161,7 +201,10 @@ INPUT OBJECT:
   drilling { holeDepth, depthRatio, cycle, peckDepth, peckCount, retract, dwell,
              notes[] },
   radialThinningFactor, radialEngagementPct (%), adaptive (bool),
-  overhang { unsupportedHeight, gripDepth, ratio, severity } | null, warnings[]
+  overhang { unsupportedHeight, gripDepth, ratio, severity } | null,
+  workholding { cuttingForce, requiredClampForce, ratedClampForce, clampMargin,
+                jawTypeId, mu, safetyFactor, insufficient } | null,
+  warnings[]
 
 3.11 WARNINGS GENERATED
   - Lead-angle / radial chip-thinning notes (informational)
@@ -171,6 +214,10 @@ INPUT OBJECT:
   - Per-pass DOC > flute LOC (chip evacuation risk)
   - Workholding overhang: unsupported workpiece height above the grip is
     moderate (0.5-1.0x grip depth) or high (>1.0x grip depth) — see 3.4
+  - Workholding clamping force: user's entered vise rating is below the
+    computed required clamping force (insufficient=true) — hard warning.
+    If no vise rating entered but the overhang check is moderate/high,
+    surfaces the estimated requirement as a cross-reference note instead.
   - Slotting with 4+ flutes at diameter >= 0.5" (chip packing)
   - Bull-nose full-width slot deeper than corner radius x 2
   - Work-hardening alloys (Stainless/Titanium/Superalloy) — keep chip load up
@@ -253,6 +300,15 @@ face_mill   | Face Mill (Indexable)| 1.0 | 1.1 | 0.5 | false | inserts | inserts
 drill       | Drill                | 1.0 | 1.0 | 1.0 | true  | flutes  | flutes, pointAngle, loc
 slitting_saw| Slitting Saw         | 0.9 | 0.8 | 1.0 | false | flutes  | flutes, thickness
 t_slot      | T-Slot Cutter        | 0.95| 0.9 | 1.0 | false | flutes  | flutes, neckDiameter
+
+4.4b WORKHOLDING JAW TYPES (4) [id | name | mu (dry friction coefficient)]
+smooth_steel | Smooth hard jaw (steel/aluminum part)     | 0.20
+serrated     | Serrated / waffle / pyramid jaw           | 0.50
+soft_jaw     | Soft jaw, bored/conformal to part         | 0.50
+grippy_plate | Diamond-coated / grippy plate             | 0.65
+Source: https://machally.com/us/blog/workholding-clamping-force-calculation/
+(dry values used as default/conservative; coolant/wet reduces mu ~30-50%,
+applied as user judgment, not a silent multiplier in the engine)
 
 4.5 FIELD DEFINITIONS (type-specific inputs)
 flutes        | int    | 1-12  | step 1
