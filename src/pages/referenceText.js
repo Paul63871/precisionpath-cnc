@@ -409,6 +409,40 @@ Input: brand + exact model/part number + workpiece material. Process:
 6. Apply button passes {sfm, chipLoad} as engine overrides.
 
 ================================================================================
+6b. VISE LOOKUP (AI) -- src/components/cnc/ViseLookup.jsx
+================================================================================
+Same architecture as BRAND LOOKUP above, applied to workholding instead of
+cutting data. Input: vise brand + model/part number + optional handle torque
+applied (ft-lbs). Process:
+1. Search web (Gemini 3.1 Pro + Google grounding) for the manufacturer's
+   official product page, spec sheet, or install manual for that exact vise
+   model (Kurt, Gerardi, Chick, TE-CO, Orange Vise, Toolex all publish
+   clamping-force charts or a single max rating).
+2. Read the real page/chart -> extract exact model name, jaw width, jaw type
+   (smooth/serrated/soft-jaw), and clamping force in lbf (identity/force must
+   come from the real source, never fabricated; kN converted to lbf x224.8
+   if that's what the manufacturer publishes).
+3. Manufacturers often publish clamping force AS A TABLE vs handle torque
+   (e.g. Kurt D688: 60 ft-lbs -> 5,391 lbf) rather than one fixed number.
+   If the user gave a torque, the LLM reads/interpolates the table at that
+   torque and reports is_max_rating=false; otherwise reports the vise's
+   published MAXIMUM at its recommended/max torque, is_max_rating=true.
+4. Client-side plausibilityCheck() flags (does not block) values outside a
+   real-world clamping-force band (~500-26,000 lbf, sourced from Kurt's own
+   selection guide -- small toolmaker vises up to their largest D100 -- and
+   several small hobby-vise listings) or an unusual force/torque ratio, and
+   always flags a missing source_url.
+5. "Apply to calculator" passes {clampForce, jawTypeId} -- jawTypeId is
+   guessed from the LLM's free-text jaw_type description via keyword match
+   (serrated/waffle/pyramid -> serrated; soft/conform -> soft_jaw; diamond/
+   grip -> grippy_plate; else smooth_steel) so the friction coefficient used
+   by the clamping-force check (3.4) updates along with the force number,
+   not just the raw lbf value.
+6. Same environment dependency as BRAND LOOKUP: requires the Base44 LLM
+   integration proxy (InvokeLLM), so it only resolves once deployed to the
+   live Base44-hosted app, not in a bare local dev server.
+
+================================================================================
 7. PERSISTENT ENTITIES (Base44, all RLS = user sees only their own records)
 ================================================================================
 - SavedCalculation: name + tool_data, tool_type_id, tool_material_id, coating_id,

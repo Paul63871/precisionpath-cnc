@@ -7,6 +7,7 @@ import MaterialForm from "@/components/cnc/MaterialForm";
 import MachineForm from "@/components/cnc/MachineForm";
 import ResultsPanel from "@/components/cnc/ResultsPanel";
 import BrandLookup from "@/components/cnc/BrandLookup";
+import ViseLookup from "@/components/cnc/ViseLookup";
 import UnitsToggle from "@/components/cnc/UnitsToggle";
 import { calculate } from "@/lib/cncEngine";
 import { PART_MATERIALS, TOOL_TYPES, OPERATIONS, WORKHOLDING_JAW_TYPES } from "@/lib/cncData";
@@ -55,6 +56,7 @@ export default function Calculator() {
   const [saving, setSaving] = useState(false);
   const [override, setOverride] = useState(null);
   const [adaptive, setAdaptive] = useState({ radialLoad: 0, axialDoc: 0, featureDepth: 0, fineStepup: 0, gripDepth: 0, jawTypeId: "smooth_steel", clampForce: 0 });
+  const [showViseLookup, setShowViseLookup] = useState(false);
   const [prefId, setPrefId] = useState(null);
 
   // Load preferences, custom materials, and machine profiles on mount.
@@ -218,6 +220,20 @@ export default function Calculator() {
                     <p className={`text-[11px] leading-relaxed font-medium ${result.workholding.insufficient ? "text-destructive" : "text-muted-foreground"}`}>
                       Needs ~{Math.round(result.workholding.requiredClampForce)} lbf of clamping force ({Math.round(result.workholding.cuttingForce)} lbf cutting force × {result.workholding.safetyFactor}× safety ÷ {result.workholding.mu} friction){result.workholding.ratedClampForce ? ` — vise rated for ${Math.round(result.workholding.ratedClampForce)} lbf${result.workholding.insufficient ? ", not enough" : ", OK"}.` : ". Enter your vise's rating above to check it directly."}
                     </p>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setShowViseLookup((s) => !s)}
+                    className="text-[11px] text-brand hover:underline font-medium pt-0.5"
+                  >
+                    {showViseLookup ? "Hide vise lookup" : "Don't know your vise's rating? Look it up by brand/model →"}
+                  </button>
+                  {showViseLookup && (
+                    <div className="pt-2 border-t border-border/40">
+                      <ViseLookup
+                        onApply={(v) => setAdaptive((a) => ({ ...a, clampForce: v.clampForce, jawTypeId: v.jawTypeId || a.jawTypeId }))}
+                      />
+                    </div>
                   )}
                 </div>
                 {selectedOp?.adaptive && (
