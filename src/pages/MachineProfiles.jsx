@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, Pencil, Trash2, Upload } from "lucide-react";
+import { Plus, Pencil, Trash2, Upload, Sparkles } from "lucide-react";
 import { useEntityList } from "@/lib/useEntityList";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -73,7 +73,12 @@ export default function MachineProfiles() {
             <h1 className="text-2xl font-bold tracking-tight">Machine Profiles</h1>
             <p className="text-xs text-muted-foreground">Store spindle HP, RPM, and feed limits for quick selection.</p>
           </div>
-          <MachineDialog onSave={create} trigger={<Button size="sm" className="h-9"><Plus className="w-4 h-4 mr-1.5" />Add</Button>} />
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="outline" className="h-9" onClick={() => navigate("/machine-setup-assistant")}>
+              <Sparkles className="w-4 h-4 mr-1.5 text-brand" />Guided Setup
+            </Button>
+            <MachineDialog onSave={create} trigger={<Button size="sm" className="h-9"><Plus className="w-4 h-4 mr-1.5" />Add</Button>} />
+          </div>
         </div>
         {loading ? (
           <div className="text-sm text-muted-foreground">Loading…</div>
