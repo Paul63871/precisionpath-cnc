@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { Cpu, Sliders, Wrench, Boxes, Cog, Sparkles, Save, Loader2 } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import ToolForm from "@/components/cnc/ToolForm";
@@ -43,6 +43,7 @@ function Section({ icon: Icon, title, children, action, highlight }) {
 
 export default function Calculator() {
   const location = useLocation();
+  const navigate = useNavigate();
   const [tool, setTool] = useState(DEFAULT_TOOL);
   const [materialId, setMaterialId] = useState("alum_6061");
   const [operationId, setOperationId] = useState("slotting");
@@ -158,7 +159,12 @@ export default function Calculator() {
           <h1 className="text-2xl font-bold tracking-tight">Calculator</h1>
           <p className="text-sm text-muted-foreground mt-0.5">Physics-based feeds &amp; speeds for any tool and material.</p>
         </div>
-        <UnitsToggle value={units} onChange={changeUnits} />
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" className="h-9" onClick={() => navigate("/speeds-feeds-assistant")}>
+            <Sparkles className="w-4 h-4 mr-1.5 text-brand" />Guided
+          </Button>
+          <UnitsToggle value={units} onChange={changeUnits} />
+        </div>
       </div>
       <div className="grid lg:grid-cols-5 gap-5">
         <div className="lg:col-span-3 space-y-5">

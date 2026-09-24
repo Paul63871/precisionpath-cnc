@@ -16,6 +16,7 @@ import MachineProfiles from './pages/MachineProfiles';
 import Settings from './pages/Settings';
 import Reference from './pages/Reference';
 import MachineSetupAssistant from './pages/MachineSetupAssistant';
+import SpeedsFeedsAssistant from './pages/SpeedsFeedsAssistant';
 import Layout from './components/Layout';
 
 // Sync the app theme with the OS dark-mode preference (prefers-color-scheme).
@@ -50,6 +51,7 @@ const AnimatedRoutes = () => {
             <Route path="/settings" element={<Settings />} />
             <Route path="/reference" element={<Reference />} />
             <Route path="/machine-setup-assistant" element={<MachineSetupAssistant />} />
+            <Route path="/speeds-feeds-assistant" element={<SpeedsFeedsAssistant />} />
           </Route>
           <Route path="*" element={<PageNotFound />} />
         </Routes>
