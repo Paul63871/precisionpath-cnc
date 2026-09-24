@@ -27,6 +27,9 @@ export default function SpeedsFeedsAssistant() {
         unsub = base44.agents.subscribeToConversation(conv.id, (data) => {
           setMessages(data.messages || []);
         });
+        if (!conv.messages?.length) {
+          base44.agents.addMessage(conv, { role: "user", content: "Let's get started — walk me through setting up my speeds and feeds." });
+        }
       } catch (e) {
         setError(e?.message || "Failed to start the assistant.");
       }
