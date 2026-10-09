@@ -189,10 +189,10 @@ export default function Calculator() {
                 </div>
                 {(selectedOp?.docMode === "profile" || selectedOp?.docMode === "hem" || selectedOp?.peripheralRough) && (
                   <div className="space-y-1.5 col-span-2">
-                    <Label className="text-xs text-muted-foreground">Workholding Grip Depth ({UNITS[units].length})</Label>
+                    <Label className="text-xs text-muted-foreground">Stock Height Gripped in Vise ({UNITS[units].length})</Label>
                     <NumberField className="h-9" allowClear placeholder="Auto (no check)" value={adaptive.gripDepth || undefined} onValueChange={(n) => setAdaptive((a) => ({ ...a, gripDepth: n || 0 }))} />
                     <p className="text-[11px] text-muted-foreground leading-relaxed">
-                      How much of the part height is actually clamped — vise jaw height, soft-jaw step, or chuck grip. Leave blank to skip. If the feature depth above extends past this, the calculator warns when the unclamped workpiece itself — not the tool — becomes the flexible cantilever.
+                      How much of the RAW STOCK sits below the jaw line right now — measure the actual workpiece in the vise, not the finished part height. If your stock is taller than the finished part (common when machining features near the top), this is still just the gripped portion, e.g. 0.25" gripped out of 2.25" of stock is 0.25" here, even if the finished part will end up 2" tall. Leave blank to skip. The calculator warns when material above this line — the workpiece itself, not the tool — becomes the flexible cantilever during the cut.
                     </p>
                     {result?.overhang && result.overhang.severity !== "none" && (
                       <p className={`text-[11px] leading-relaxed font-medium ${result.overhang.severity === "high" ? "text-destructive" : "text-amber-600"}`}>
@@ -224,7 +224,11 @@ export default function Calculator() {
                   </div>
                   {result?.workholding && (
                     <p className={`text-[11px] leading-relaxed font-medium ${result.workholding.insufficient ? "text-destructive" : "text-muted-foreground"}`}>
-                      Needs ~{Math.round(result.workholding.requiredClampForce)} lbf of clamping force ({Math.round(result.workholding.cuttingForce)} lbf cutting force × {result.workholding.safetyFactor}× safety ÷ {result.workholding.mu} friction){result.workholding.ratedClampForce ? ` — vise rated for ${Math.round(result.workholding.ratedClampForce)} lbf${result.workholding.insufficient ? ", not enough" : ", OK"}.` : ". Enter your vise's rating above to check it directly."}
+                      Needs ~{Math.round(result.workholding.requiredClampForce)} lbf of clamping force ({Math.round(result.workholding.cuttingForce)} lbf cutting force × {result.workholding.safetyFactor}× safety ÷ {result.workholding.mu} friction){result.workholding.ratedClampForce ? (
+                        result.workholding.forceDerate < 1.0
+                          ? ` — vise rated for ${Math.round(result.workholding.ratedClampForce)} lbf, but this jaw material only delivers ~${Math.round(result.workholding.usableClampForce)} lbf (${Math.round(result.workholding.forceDerate * 100)}%) before it yields${result.workholding.insufficient ? ", not enough" : ", OK"}.`
+                          : ` — vise rated for ${Math.round(result.workholding.ratedClampForce)} lbf${result.workholding.insufficient ? ", not enough" : ", OK"}.`
+                      ) : ". Enter your vise's rating above to check it directly."}
                     </p>
                   )}
                   <button

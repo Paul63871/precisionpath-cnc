@@ -50,10 +50,25 @@ function plausibilityCheck(res) {
 // conservative, lowest-friction case) whenever the field is missing or
 // doesn't cleanly match — under-estimating grip is the safe failure
 // direction for a warning system, never over-estimating it.
+// Normalizes a model string for comparison (case/spacing/punctuation-insensitive).
+// Used to detect when the lookup resolved to a DIFFERENT model than the user typed
+// (typo like "D6X" for "DX6", or a similar-numbered sibling model) so the swap is
+// never silent -- applying another vise's force to the check is the unsafe failure.
+function normModel(s) {
+  return (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+function modelMismatch(typed, found) {
+  const t = normModel(typed);
+  const f = normModel(found);
+  if (!t || !f) return false;
+  return !f.includes(t) && !t.includes(f);
+}
+
 function guessJawTypeId(standardJawType) {
   const t = (standardJawType || "").toLowerCase().trim();
   if (t === "serrated") return "serrated";
-  if (t === "soft_jaw") return "soft_jaw";
+  if (t === "soft_jaw_steel") return "soft_jaw_steel";
+  if (t === "soft_jaw_aluminum") return "soft_jaw_aluminum";
   if (t === "grippy_plate") return "grippy_plate";
   return "smooth_steel";
 }
@@ -95,7 +110,7 @@ Model / part number: ${model || "unspecified"}${torqueNote}
 
 STEP 1 — Find the product page or spec sheet: Search the web for the manufacturer's official product page, spec sheet, or installation manual for this exact vise model (e.g. "Kurt D688 clamping force", "Kurt DX6 manual clamping force chart"). Manufacturers like Kurt, Gerardi, Chick, TE-CO, Orange Vise, and Toolex all publish clamping-force-vs-torque charts or a single maximum clamping force spec.
 
-STEP 2 — Identify the vise: From the real product page, extract the exact model name/number and jaw width. Also determine the STANDARD jaw type this model SHIPS WITH by default (not optional/accessory jaws sold separately) and classify it into exactly one of these four categories for standard_jaw_type: "smooth_steel" (plain/smooth hardened steel jaws, the default for most general-purpose vises like Kurt D-series/DX6), "serrated" (serrated/waffle/pyramid-pattern jaws), "soft_jaw" (soft aluminum/conformal jaws bored to the part), "grippy_plate" (diamond-coated or similar high-friction plates). If the page mentions serrated or soft jaws only as an optional accessory/add-on rather than what ships standard, still classify standard_jaw_type as "smooth_steel" and mention the optional accessory in jaw_type/notes instead.
+STEP 2 — Identify the vise: From the real product page, extract the exact model name/number and jaw width. Also determine the STANDARD jaw type this model SHIPS WITH by default (not optional/accessory jaws sold separately) and classify it into exactly one of these five categories for standard_jaw_type: "smooth_steel" (plain/smooth hardened steel jaws, the default for most general-purpose vises like Kurt D-series/DX6), "serrated" (serrated/waffle/pyramid-pattern hardened steel jaws), "soft_jaw_steel" (soft steel jaws, typically 1018/12L14, bored/machined to the part profile in-situ), "soft_jaw_aluminum" (soft ALUMINUM jaws, typically 6061-T6, bored to the part profile — common for finished/anodized/polished parts that can't tolerate steel jaw marks, but the jaw material itself only reliably holds ~30-50% of an equivalent steel jaw's clamping force before yielding), "grippy_plate" (diamond-coated or similar high-friction plates). If the page mentions serrated or soft jaws only as an optional accessory/add-on rather than what ships standard, still classify standard_jaw_type as "smooth_steel" and mention the optional accessory in jaw_type/notes instead. If the user's brand/model or notes mention aluminum jaws specifically, prefer "soft_jaw_aluminum" over "soft_jaw_steel".
 
 STEP 3 — Clamping force: Manufacturers often publish clamping force as a TABLE vs handle torque (e.g. "60 ft-lbs -> 5,391 lbf") rather than one fixed number. If the user gave an applied torque, read the table at (or interpolated near) that torque and report that as clamp_force_lbf, and set the torque you used as rated_torque_ftlb. If no torque was given, or no table exists, report the manufacturer's MAXIMUM rated clamping force at their recommended/max torque as clamp_force_lbf, and rated_torque_ftlb as the torque that maximum corresponds to. Always report force in POUNDS-FORCE (lbf) — if the source publishes kN, convert (1 kN = 224.8 lbf) and note the conversion in notes.
 
@@ -117,7 +132,7 @@ RULES:
             brand_name: { type: "string" },
             jaw_width_in: { type: "number" },
             jaw_type: { type: "string" },
-            standard_jaw_type: { type: "string", enum: ["smooth_steel", "serrated", "soft_jaw", "grippy_plate"] },
+            standard_jaw_type: { type: "string", enum: ["smooth_steel", "serrated", "soft_jaw_steel", "soft_jaw_aluminum", "grippy_plate"] },
             clamp_force_lbf: { type: "number" },
             rated_torque_ftlb: { type: "number" },
             is_max_rating: { type: "boolean" },
@@ -181,12 +196,21 @@ RULES:
                 )}
               </div>
               {result.brand_name && <p className="font-medium text-foreground">{result.brand_name}</p>}
+              {modelMismatch(model, result.model_name) && (
+                <div className="rounded-md border border-amber-400 bg-amber-100 p-2 text-[11px] text-amber-900 flex items-start gap-1.5">
+                  <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                  <span>You entered <b>{model}</b>, but this spec is for <b>{result.model_name}</b>. Confirm that is your vise before applying — a similar model number can have a very different clamping force.</span>
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-y-0.5 font-mono pt-0.5">
                 <span className="text-muted-foreground">Clamp force:</span><span>{result.clamp_force_lbf ? `${Math.round(result.clamp_force_lbf)} lbf` : "—"}</span>
                 {result.rated_torque_ftlb ? <><span className="text-muted-foreground">At torque:</span><span>{result.rated_torque_ftlb} ft-lbs</span></> : null}
                 {result.jaw_width_in ? <><span className="text-muted-foreground">Jaw width:</span><span>{result.jaw_width_in}"</span></> : null}
                 {result.jaw_type && <><span className="text-muted-foreground">Jaw type:</span><span>{result.jaw_type}</span></>}
               </div>
+              {result.is_max_rating === true && (
+                <p className="text-[11px] text-muted-foreground pt-0.5">This is the vise's maximum rating{result.rated_torque_ftlb ? ` at ${result.rated_torque_ftlb} ft-lbs` : ""}. If you normally clamp with less torque, enter it above and look up again — available force at lower torque is noticeably lower.</p>
+              )}
               {result.is_max_rating === false && (
                 <p className="text-[11px] text-muted-foreground pt-0.5">This is the force at your stated torque, not the vise's absolute maximum — apply more torque (within the manufacturer's recommended limit) for more grip if needed.</p>
               )}

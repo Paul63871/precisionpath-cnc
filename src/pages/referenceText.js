@@ -106,8 +106,10 @@ INPUT OBJECT:
 
   WORKHOLDING OVERHANG (gripDepth, profile/hem/peripheralRough ops only):
     - Workpiece-side rigidity check, NOT tool stickout. gripDepth = how much
-      of the part height the vise/chuck/fixture actually clamps (optional
-      user input). cutHeight = featureDepth if set, else loc.
+      of the RAW STOCK the vise/chuck/fixture actually clamps (optional user
+      input; UI label "Stock Height Gripped in Vise"). It is the physical
+      stock in the jaws, NOT a dimension of the finished part: 2.25" stock
+      with 0.25" in the jaws is gripDepth 0.25 even if the part ends 2" tall. cutHeight = featureDepth if set, else loc.
     - if gripDepth > 0 && cutHeight > 0:
         unsupported = max(0, cutHeight - gripDepth)
         ratio = unsupported / gripDepth
@@ -141,15 +143,24 @@ INPUT OBJECT:
       https://ctemag.com/articles/understanding-tangential-cutting-force-when-milling/
     - jaw = WORKHOLDING_JAW_TYPES lookup (cncData.js), default smooth_steel
       (mu=0.20) when jawTypeId unset — the conservative/lower-grip default:
-        smooth_steel (mu=0.20), serrated (mu=0.50), soft_jaw (mu=0.50),
-        grippy_plate (mu=0.65)
+        smooth_steel (mu=0.20), serrated (mu=0.50), soft_jaw_steel (mu=0.50),
+        soft_jaw_aluminum (mu=0.25, forceDerate=0.4), grippy_plate (mu=0.65)
     - safetyFactor = 4 if op.slotDerate (full-radial/interrupted engagement:
       slotting, boring) else 3 (continuous engagement: contour, adaptive,
       pocket, face) — both inside the sourced 2-5x range.
     - requiredClampForce = (cuttingForce * safetyFactor) / jaw.mu
     - if clampForce (user's vise rating) provided:
-        clampMargin = clampForce / requiredClampForce
+        usableClampForce = clampForce * jaw.forceDerate
+        clampMargin = usableClampForce / requiredClampForce
         insufficient = clampMargin < 1.0
+        jawLimited = insufficient && jaw.forceDerate < 1 &&
+                     clampForce / requiredClampForce >= 1  (vise is enough,
+                     the aluminum jaw is the weak link -> dedicated warning)
+    - forceDerate: aluminum (6061-T6) jaws only reliably carry ~30-50% of an
+      equivalent steel jaw's clamping force before yielding (machally.com
+      vise-jaw-selection-guide, ctemag.com fixture-considerations). The lower
+      end (0.4) is used because overstating usable force is the unsafe
+      direction. Steel jaws (smooth, serrated, steel soft jaws) = 1.0.
       else: ratedClampForce/clampMargin = null, insufficient = false (still
       reports the requirement as an estimate for the machinist to compare).
     - Source for the full slip-prevention formula chain, friction
@@ -301,11 +312,12 @@ drill       | Drill                | 1.0 | 1.0 | 1.0 | true  | flutes  | flutes,
 slitting_saw| Slitting Saw         | 0.9 | 0.8 | 1.0 | false | flutes  | flutes, thickness
 t_slot      | T-Slot Cutter        | 0.95| 0.9 | 1.0 | false | flutes  | flutes, neckDiameter
 
-4.4b WORKHOLDING JAW TYPES (4) [id | name | mu (dry friction coefficient)]
-smooth_steel | Smooth hard jaw (steel/aluminum part)     | 0.20
-serrated     | Serrated / waffle / pyramid jaw           | 0.50
-soft_jaw     | Soft jaw, bored/conformal to part         | 0.50
-grippy_plate | Diamond-coated / grippy plate             | 0.65
+4.4b WORKHOLDING JAW TYPES (5) [id | name | mu (dry friction) | forceDerate]
+smooth_steel      | Smooth hard jaw (steel)                          | 0.20 | 1.0
+serrated          | Serrated / waffle / pyramid jaw (steel)          | 0.50 | 1.0
+soft_jaw_steel    | Soft jaw, steel (1018/12L14), bored to part      | 0.50 | 1.0
+soft_jaw_aluminum | Soft jaw, aluminum (6061-T6), bored to part      | 0.25 | 0.4
+grippy_plate      | Diamond-coated / grippy plate (steel)            | 0.65 | 1.0
 Source: https://machally.com/us/blog/workholding-clamping-force-calculation/
 (dry values used as default/conservative; coolant/wet reduces mu ~30-50%,
 applied as user judgment, not a silent multiplier in the engine)
@@ -432,12 +444,19 @@ applied (ft-lbs). Process:
    selection guide -- small toolmaker vises up to their largest D100 -- and
    several small hobby-vise listings) or an unusual force/torque ratio, and
    always flags a missing source_url.
-5. "Apply to calculator" passes {clampForce, jawTypeId} -- jawTypeId is
-   guessed from the LLM's free-text jaw_type description via keyword match
-   (serrated/waffle/pyramid -> serrated; soft/conform -> soft_jaw; diamond/
-   grip -> grippy_plate; else smooth_steel) so the friction coefficient used
+5. "Apply to calculator" passes {clampForce, jawTypeId} -- jawTypeId comes
+   from a structured standard_jaw_type enum the LLM must fill (smooth_steel |
+   serrated | soft_jaw_steel | soft_jaw_aluminum | grippy_plate) describing
+   what the vise SHIPS with (optional accessory jaws are ignored); anything
+   unrecognized defaults to smooth_steel. The user can still change jaw type
+   manually in the Jaw Type dropdown afterward. The friction coefficient used
    by the clamping-force check (3.4) updates along with the force number,
    not just the raw lbf value.
+5b. Silent-substitution guard: if the model the LLM resolved to does not
+   contain the model the user typed (normalized, case/punctuation-insensitive),
+   an amber notice shows both names (e.g. typed "D6X", found "DX6 CrossOver").
+   When the result is the vise's maximum rating, a note reminds the user to
+   enter their real handle torque for the force actually available.
 6. Same environment dependency as BRAND LOOKUP: requires the Base44 LLM
    integration proxy (InvokeLLM), so it only resolves once deployed to the
    live Base44-hosted app, not in a bare local dev server.

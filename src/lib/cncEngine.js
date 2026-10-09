@@ -685,16 +685,34 @@ export function calculate(input) {
     const safetyFactor = op.slotDerate ? 4 : 3;
     const requiredClampForce = (cuttingForce * safetyFactor) / jaw.mu;
     const ratedClampForce = clampForce && clampForce > 0 ? clampForce : null;
-    const clampMargin = ratedClampForce ? ratedClampForce / requiredClampForce : null;
+    // The vise's RATED force (from its spec plate/manual) is the force the
+    // screw/mechanism can generate. But soft aluminum jaws (6061-T6) yield
+    // under their own clamping load well before a steel-jaw vise maxes out
+    // -- they reliably deliver only ~30-50% of an equivalent steel jaw's
+    // force before deforming (machally.com vise jaw selection guide,
+    // ctemag.com fixture considerations). So the force that actually reaches
+    // the part through an aluminum jaw is capped at jaw.forceDerate x the
+    // vise's rated force, not the full rated number -- this is a SEPARATE
+    // failure mode from friction (mu): the jaw itself can crush before the
+    // part ever slips.
+    const usableClampForce = ratedClampForce != null ? ratedClampForce * jaw.forceDerate : null;
+    const clampMargin = usableClampForce ? usableClampForce / requiredClampForce : null;
     workholding = {
       cuttingForce: Number(cuttingForce.toFixed(1)),
       requiredClampForce: Number(requiredClampForce.toFixed(1)),
       ratedClampForce,
+      usableClampForce: usableClampForce != null ? Number(usableClampForce.toFixed(1)) : null,
+      forceDerate: jaw.forceDerate,
       clampMargin: clampMargin != null ? Number(clampMargin.toFixed(2)) : null,
       jawTypeId: jaw.id,
       mu: jaw.mu,
       safetyFactor,
-      insufficient: ratedClampForce != null && clampMargin < 1.0,
+      insufficient: usableClampForce != null && clampMargin < 1.0,
+      // True when the VISE's rated force would have been enough, but the
+      // aluminum jaw's own strength derate is what actually pushes the
+      // usable force below the requirement -- i.e. the bottleneck is the
+      // soft jaw material, not the vise mechanism itself.
+      jawLimited: usableClampForce != null && jaw.forceDerate < 1.0 && clampMargin < 1.0 && (ratedClampForce / requiredClampForce) >= 1.0,
     };
   }
 
@@ -710,7 +728,8 @@ export function calculate(input) {
   if (loc && (op.docMode === "profile" || op.docMode === "hem") && doc > loc) warnings.push(`Per-pass axial DOC (${doc.toFixed(3)}") exceeds flute LOC (${loc}") — confirm chip evacuation.`);
   if (overhang && overhang.severity === "high") warnings.push(`Workholding: ${overhang.unsupportedHeight}" of this cut is above your ${overhang.gripDepth}" grip depth (${overhang.ratio}x the grip) — the workpiece itself is now the flexible cantilever, not just the tool. LANG Technik's vise-sizing rule of thumb caps workpiece height at ~2x the jaw/grip dimension for this reason. Rough to a support stub and finish after re-fixturing, use a taller vise step/soft jaws, add a tailstock or steady support, or cut in from the top down instead of a single full-height pass around the outside.`);
   else if (overhang && overhang.severity === "moderate") warnings.push(`Workholding: ${overhang.unsupportedHeight}" of this cut is above your ${overhang.gripDepth}" grip depth (${overhang.ratio}x the grip) — getting close to the point where the workpiece, not the tool, starts flexing. Consider a lighter radial stepover or an extra finishing pass on this feature if you see chatter or a tapered wall.`);
-  if (workholding && workholding.insufficient) warnings.push(`Workholding: this cut needs ~${Math.round(workholding.requiredClampForce)} lbf of clamping force (${Math.round(workholding.cuttingForce)} lbf cutting force x ${workholding.safetyFactor}x safety factor ÷ ${workholding.mu} friction) but the vise is only rated for ${Math.round(workholding.ratedClampForce)} lbf — the part can slip or pull out under this load, exactly like a full-LOC cut on a shallow grip. Reduce DOC/WOC/feed, switch to serrated or soft jaws for more grip, or add a second point of support (tailstock, strap, stop block) before running this program.`);
+  if (workholding && workholding.insufficient && workholding.jawLimited) warnings.push(`Workholding: this cut needs ~${Math.round(workholding.requiredClampForce)} lbf of clamping force, and the vise itself is rated for ${Math.round(workholding.ratedClampForce)} lbf — enough on paper — but aluminum soft jaws only reliably deliver ~${Math.round(workholding.forceDerate * 100)}% of that (${Math.round(workholding.usableClampForce)} lbf usable) before the jaw material itself yields. The jaw, not the vise, is the weak link here. Switch to steel soft jaws bored to the same part profile for this operation, or reduce DOC/WOC/feed.`);
+  else if (workholding && workholding.insufficient) warnings.push(`Workholding: this cut needs ~${Math.round(workholding.requiredClampForce)} lbf of clamping force (${Math.round(workholding.cuttingForce)} lbf cutting force x ${workholding.safetyFactor}x safety factor ÷ ${workholding.mu} friction) but the vise is only rated for ${Math.round(workholding.ratedClampForce)} lbf — the part can slip or pull out under this load, exactly like a full-LOC cut on a shallow grip. Reduce DOC/WOC/feed, switch to serrated or soft jaws for more grip, or add a second point of support (tailstock, strap, stop block) before running this program.`);
   else if (workholding && !workholding.ratedClampForce && overhang && (overhang.severity === "moderate" || overhang.severity === "high")) warnings.push(`Workholding: this cut needs an estimated ~${Math.round(workholding.requiredClampForce)} lbf of clamping force (${Math.round(workholding.cuttingForce)} lbf cutting force x ${workholding.safetyFactor}x safety factor ÷ ${workholding.mu} friction, ${WORKHOLDING_JAW_TYPES.find((j)=>j.id===workholding.jawTypeId)?.name.toLowerCase()}) — enter your vise's rated clamping force to check it against this number directly, especially combined with the shallow grip depth flagged above.`);
   if (op.docMode === "slot" && diameter >= 0.5 && flutes >= 4) warnings.push("Slotting with 4+ flutes at this diameter risks chip packing — consider 2-3 flutes or air blast.");
   if (tt.id === "bull_nose" && cornerRadius && op.docMode === "slot" && doc > cornerRadius * 2) warnings.push("Bull-nose full-width slotting deeper than the corner radius — chip evacuation at the radius is tight; peck or reduce DOC.");
