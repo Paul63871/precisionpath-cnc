@@ -49,6 +49,11 @@ export default function Calculator() {
   const [operationId, setOperationId] = useState("slotting");
   const [machine, setMachine] = useState({ hp: 5, maxRpm: 10000, minRpm: 60, maxIpm: 200 });
   const [aggressiveness, setAggressiveness] = useState(0.6);
+  // Optimize-for priority: "finish" (default) biases every strategy toward surface quality.
+  const [priority, setPriorityState] = useState(() => {
+    try { return localStorage.getItem("pp_priority") || "finish"; } catch { return "finish"; }
+  });
+  const setPriority = (p) => { setPriorityState(p); try { localStorage.setItem("pp_priority", p); } catch {} };
   const [units, setUnits] = useState("imperial");
   const [customMaterials, setCustomMaterials] = useState([]);
   const [profiles, setProfiles] = useState([]);
@@ -56,7 +61,7 @@ export default function Calculator() {
   const [saveName, setSaveName] = useState("");
   const [saving, setSaving] = useState(false);
   const [override, setOverride] = useState(null);
-  const [adaptive, setAdaptive] = useState({ radialLoad: 0, axialDoc: 0, featureDepth: 0, fineStepup: 0, gripDepth: 0, jawTypeId: "smooth_steel", clampForce: 0 });
+  const [adaptive, setAdaptive] = useState({ radialLoad: 0, axialDoc: 0, featureDepth: 0, fineStepup: 0, gripDepth: 0, jawTypeId: "smooth_steel", clampForce: 0, featureDiameter: 0, pilotDiameter: 0, targetRa: 0 });
   const [showViseLookup, setShowViseLookup] = useState(false);
   const [prefId, setPrefId] = useState(null);
 
@@ -128,8 +133,9 @@ export default function Calculator() {
       threadId: tool.threadId, tapStyle: tool.tapStyle, pitch: tool.pitch, holeType: tool.holeType,
       gripDepth: adaptive.gripDepth,
       jawTypeId: adaptive.jawTypeId, clampForce: adaptive.clampForce,
+      priority, featureDiameter: adaptive.featureDiameter, pilotDiameter: adaptive.pilotDiameter, targetRa: adaptive.targetRa,
     });
-  }, [tool, selectedMaterial, operationId, aggressiveness, machine, override, adaptive]);
+  }, [tool, selectedMaterial, operationId, aggressiveness, machine, override, adaptive, priority]);
 
   const saveCalc = async () => {
     setSaving(true);
@@ -181,16 +187,16 @@ export default function Calculator() {
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label className="text-xs text-muted-foreground">Feature Depth ({UNITS[units].length})</Label>
-                  <NumberField className="h-9" allowClear placeholder="Auto" value={adaptive.featureDepth || undefined} onValueChange={(n) => setAdaptive((a) => ({ ...a, featureDepth: n || 0 }))} />
+                  <NumberField className="h-9" allowClear placeholder="Auto" value={adaptive.featureDepth ? lenFromImp(adaptive.featureDepth, units) : undefined} onValueChange={(n) => setAdaptive((a) => ({ ...a, featureDepth: n ? lenToImp(n, units) : 0 }))} />
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs text-muted-foreground">Axial DOC / pass ({UNITS[units].length})</Label>
-                  <NumberField className="h-9" allowClear placeholder="Auto" value={adaptive.axialDoc || undefined} onValueChange={(n) => setAdaptive((a) => ({ ...a, axialDoc: n || 0 }))} />
+                  <NumberField className="h-9" allowClear placeholder="Auto" value={adaptive.axialDoc ? lenFromImp(adaptive.axialDoc, units) : undefined} onValueChange={(n) => setAdaptive((a) => ({ ...a, axialDoc: n ? lenToImp(n, units) : 0 }))} />
                 </div>
                 {(selectedOp?.docMode === "profile" || selectedOp?.docMode === "hem" || selectedOp?.peripheralRough) && (
                   <div className="space-y-1.5 col-span-2">
                     <Label className="text-xs text-muted-foreground">Stock Height Gripped in Vise ({UNITS[units].length})</Label>
-                    <NumberField className="h-9" allowClear placeholder="Auto (no check)" value={adaptive.gripDepth || undefined} onValueChange={(n) => setAdaptive((a) => ({ ...a, gripDepth: n || 0 }))} />
+                    <NumberField className="h-9" allowClear placeholder="Auto (no check)" value={adaptive.gripDepth ? lenFromImp(adaptive.gripDepth, units) : undefined} onValueChange={(n) => setAdaptive((a) => ({ ...a, gripDepth: n ? lenToImp(n, units) : 0 }))} />
                     <p className="text-[11px] text-muted-foreground leading-relaxed">
                       How much of the RAW STOCK sits below the jaw line right now — measure the actual workpiece in the vise, not the finished part height. If your stock is taller than the finished part (common when machining features near the top), this is still just the gripped portion, e.g. 0.25" gripped out of 2.25" of stock is 0.25" here, even if the finished part will end up 2" tall. Leave blank to skip. The calculator warns when material above this line — the workpiece itself, not the tool — becomes the flexible cantilever during the cut.
                     </p>
@@ -199,6 +205,36 @@ export default function Calculator() {
                         {result.overhang.unsupportedHeight} {UNITS[units].length} of this cut is unsupported above the grip ({result.overhang.ratio}× the grip depth).
                       </p>
                     )}
+                  </div>
+                )}
+                {selectedOp?.circular && (
+                  <div className="space-y-1.5 col-span-2 rounded-lg border border-brand/30 bg-brand/5 p-3">
+                    <Label className="text-xs font-semibold text-foreground">
+                      {selectedOp.circular === "external" ? "Boss (circular feature)" : selectedOp.circularKind === "pocket_rough" ? "Circular Pocket" : "Bore / Hole"}
+                    </Label>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1.5">
+                        <Label className="text-xs text-muted-foreground">{selectedOp.circular === "external" ? "Boss" : selectedOp.circularKind === "pocket_rough" ? "Pocket" : "Finished bore"} Ø ({UNITS[units].length})</Label>
+                        <NumberField className="h-9" allowClear placeholder="Required" value={adaptive.featureDiameter ? lenFromImp(adaptive.featureDiameter, units) : undefined} onValueChange={(n) => setAdaptive((a) => ({ ...a, featureDiameter: n ? lenToImp(n, units) : 0 }))} />
+                      </div>
+                      {selectedOp.circularKind === "bore_rough" && (
+                        <div className="space-y-1.5">
+                          <Label className="text-xs text-muted-foreground">Pilot hole Ø ({UNITS[units].length})</Label>
+                          <NumberField className="h-9" allowClear placeholder="None (solid)" value={adaptive.pilotDiameter ? lenFromImp(adaptive.pilotDiameter, units) : undefined} onValueChange={(n) => setAdaptive((a) => ({ ...a, pilotDiameter: n ? lenToImp(n, units) : 0 }))} />
+                        </div>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-muted-foreground leading-relaxed">
+                      Needed for the circular-interpolation feed correction: the feed you program on a G2/G3 arc acts on the tool centerline, not the cutting edge.
+                      {selectedOp.circularKind === "bore_rough" && " Leave the pilot blank to helix down from solid; enter it to size the ring passes."}
+                    </p>
+                  </div>
+                )}
+                {selectedOp?.finishing && (
+                  <div className="space-y-1.5 col-span-2">
+                    <Label className="text-xs text-muted-foreground">Target surface finish Ra (µin)</Label>
+                    <NumberField className="h-9" allowClear placeholder="32 µin (0.8 µm) default" value={adaptive.targetRa || undefined} onValueChange={(n) => setAdaptive((a) => ({ ...a, targetRa: n || 0 }))} />
+                    <p className="text-[11px] text-muted-foreground leading-relaxed">Drives the ball-nose scallop stepover and the maximum feed-per-tooth. 32 µin = 0.8 µm; 63 µin = 1.6 µm; 16 µin = 0.4 µm.</p>
                   </div>
                 )}
                 <div className="space-y-1.5 col-span-2 pt-2 border-t border-border/60">
@@ -249,7 +285,7 @@ export default function Calculator() {
                 {selectedOp?.adaptive && (
                   <div className="space-y-1.5 col-span-2">
                     <Label className="text-xs text-muted-foreground">Optimal Load — max stepover ({UNITS[units].length})</Label>
-                    <NumberField className="h-9" allowClear placeholder="Auto" value={adaptive.radialLoad || undefined} onValueChange={(n) => setAdaptive((a) => ({ ...a, radialLoad: n || 0 }))} />
+                    <NumberField className="h-9" allowClear placeholder="Auto" value={adaptive.radialLoad ? lenFromImp(adaptive.radialLoad, units) : undefined} onValueChange={(n) => setAdaptive((a) => ({ ...a, radialLoad: n ? lenToImp(n, units) : 0 }))} />
                     {result && (
                       <p className="text-[11px] text-muted-foreground leading-relaxed">
                         Set <span className="font-medium text-foreground">HSMWorks → Passes → Optimal Load</span> to{" "}
@@ -265,7 +301,7 @@ export default function Calculator() {
                 {selectedOp?.fineStepup && (
                   <div className="space-y-1.5 col-span-2">
                     <Label className="text-xs text-muted-foreground">Fine Stepup ({UNITS[units].length})</Label>
-                    <NumberField className="h-9" allowClear placeholder="Auto" value={adaptive.fineStepup || undefined} onValueChange={(n) => setAdaptive((a) => ({ ...a, fineStepup: n || 0 }))} />
+                    <NumberField className="h-9" allowClear placeholder="Auto" value={adaptive.fineStepup ? lenFromImp(adaptive.fineStepup, units) : undefined} onValueChange={(n) => setAdaptive((a) => ({ ...a, fineStepup: n ? lenToImp(n, units) : 0 }))} />
                     {result && (() => {
                       const base = adaptive.axialDoc > 0 ? adaptive.axialDoc : result.doc;
                       const rec = lenFromImp(base * 0.125, units);
@@ -285,7 +321,7 @@ export default function Calculator() {
               <p className="text-[11px] text-muted-foreground mb-3">Enter the total hole depth. The calculator generates a peck-drilling cycle (G83, full retract) for holes deeper than 3× diameter, scaled to the tool, material, and depth.</p>
               <div className="space-y-1.5">
                 <Label className="text-xs text-muted-foreground">Hole Depth ({UNITS[units].length})</Label>
-                <NumberField className="h-9" allowClear placeholder="Auto (3×D)" value={adaptive.featureDepth || undefined} onValueChange={(n) => setAdaptive((a) => ({ ...a, featureDepth: n || 0 }))} />
+                <NumberField className="h-9" allowClear placeholder="Auto (3×D)" value={adaptive.featureDepth ? lenFromImp(adaptive.featureDepth, units) : undefined} onValueChange={(n) => setAdaptive((a) => ({ ...a, featureDepth: n ? lenToImp(n, units) : 0 }))} />
               </div>
             </Section>
           )}
@@ -294,7 +330,7 @@ export default function Calculator() {
               <p className="text-[11px] text-muted-foreground mb-3">Enter the full thread depth needed. Feed is locked to the thread pitch (F = RPM × pitch) — it is not adjustable by aggressiveness, which only affects spindle speed.</p>
               <div className="space-y-1.5">
                 <Label className="text-xs text-muted-foreground">Thread Depth ({UNITS[units].length})</Label>
-                <NumberField className="h-9" allowClear placeholder="Auto (2×D)" value={adaptive.featureDepth || undefined} onValueChange={(n) => setAdaptive((a) => ({ ...a, featureDepth: n || 0 }))} />
+                <NumberField className="h-9" allowClear placeholder="Auto (2×D)" value={adaptive.featureDepth ? lenFromImp(adaptive.featureDepth, units) : undefined} onValueChange={(n) => setAdaptive((a) => ({ ...a, featureDepth: n ? lenToImp(n, units) : 0 }))} />
               </div>
             </Section>
           )}
@@ -310,6 +346,21 @@ export default function Calculator() {
         </div>
         <div className="lg:col-span-2">
           <div className="lg:sticky lg:top-20 space-y-5">
+            <Section icon={Sparkles} title="Optimize For">
+              <div className="grid grid-cols-3 gap-1.5">
+                {[["finish", "Finish quality"], ["balanced", "Balanced"], ["speed", "Speed / MRR"]].map(([id, label]) => (
+                  <button
+                    key={id} type="button" onClick={() => setPriority(id)}
+                    className={`rounded-lg border px-2 py-2 text-xs font-medium min-h-[40px] ${priority === id ? "border-brand bg-brand text-white" : "border-border bg-card text-foreground hover:bg-accent"}`}
+                  >{label}</button>
+                ))}
+              </div>
+              <p className="text-[11px] text-muted-foreground mt-2 leading-relaxed">
+                {priority === "finish" && "Lighter chip load, stepover and depth, finishing passes held to a roughness target, with speed kept up to avoid built-up edge. Slower cycle time, better surface and tool life."}
+                {priority === "balanced" && "Manufacturer-benchmark production rates (IMCO ToolBot-style) with no finish bias."}
+                {priority === "speed" && "Pushes chip load, stepover and depth toward the machine's power limit for maximum removal rate."}
+              </p>
+            </Section>
             <Section icon={Sliders} title="Aggressiveness">
               <div className="space-y-2">
                 <div className="flex justify-between text-xs">

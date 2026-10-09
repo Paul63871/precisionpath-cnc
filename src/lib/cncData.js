@@ -106,15 +106,122 @@ export const PART_MATERIALS = [
   { id: "mdf", name: "MDF / Plywood", category: "Wood", materialClass: "wood",
     sfmRange: [500, 1000], chipLoadFactor: 1.0, hpFactor: 0.10, chipCurve: "soft",
     slotDepthFactor: 1.0, profileDepthFactor: 2.0 },
+  // ---------------------------------------------------------------------------
+  // PLASTICS (solid-carbide end mills; thermally limited, not tool-limited).
+  // Speeds: Harvey Performance's published plastics chart groups HARD unfilled
+  // plastics (acrylic, acetal/Delrin, nylon 6 & 6/6, PEEK, Ultem 1000, PS, PSU)
+  // at 800-1200 SFM and SOFT unfilled plastics (HDPE, UHMW, PTFE/Teflon, LDPE,
+  // PFA, FEP, polyurethane) at 1200-1600 SFM, with semi-roughing chip load
+  // ~3.2% of D (<=1/4") / ~2.7% of D (>=5/16") and axial DOC 1xD, radial 0.35xD
+  // (finishing: 0.10xD radial, 1.5xD axial):
+  //   https://harveyperformance.widen.net/content/hnlndl2mif/pdf/SF_852000.pdf
+  // Each material below then applies its own, more conservative, material-
+  // specific window from plastics-processor machining guides where they exist
+  // (Ready Plastics per-material machining pages, Curbell Plastics, Drake
+  // Plastics PEEK guide, Quadrant/Mitsubishi Chemical Machinist's Handbook):
+  //   https://www.readyplastics.com/resources/materials/nylon/machining
+  //   https://www.readyplastics.com/resources/materials/ultem-pei/machining
+  //   https://www.curbellplastics.com/services-capabilities/fabrication-machined-parts/plastic-machining-guidelines/plastic-milling-machining-guidelines/
+  // chipLoadFactor scales the Harvey-derived "plastic" chip-load curve
+  // (CHIP_LOAD_TABLE_PLASTIC) so that 1/2" tools land inside each material's
+  // published IPT window at the default setting. hpFactor values are engineering
+  // estimates (hpFactorEstimate) — plastics unit power is not tabulated by the
+  // plastics processors; all are low (0.10-0.28 hp per in3/min).
+  // `notes` are shown as machining cautions in the results (melting, moisture,
+  // clamping distortion, stress-cracking, abrasive fillers, coolant chemistry).
+  // slotDepthFactor/profileDepthFactor follow Ready Plastics' per-material axial
+  // limits (nylon: slotting <=0.5xD, peripheral <=1xD; Ultem 1000: <=0.5xD) and
+  // Harvey's 1xD semi-roughing axial DOC.
+  // ---------------------------------------------------------------------------
   { id: "acrylic", name: "Acrylic (PMMA)", category: "Plastic", materialClass: "plastic",
-    sfmRange: [300, 600], chipLoadFactor: 1.05, hpFactor: 0.14, chipCurve: "soft",
-    slotDepthFactor: 0.9, profileDepthFactor: 2.0 },
-  { id: "delrin", name: "Delrin (POM)", category: "Plastic", materialClass: "plastic",
-    sfmRange: [500, 1000], chipLoadFactor: 1.0, hpFactor: 0.13, chipCurve: "soft",
-    slotDepthFactor: 1.0, profileDepthFactor: 2.0 },
-  { id: "abs", name: "ABS / Polycarbonate", category: "Plastic", materialClass: "plastic",
-    sfmRange: [300, 600], chipLoadFactor: 1.05, hpFactor: 0.14, chipCurve: "soft",
-    slotDepthFactor: 0.9, profileDepthFactor: 2.0 },
+    sfmRange: [500, 1000], chipLoadFactor: 0.70, hpFactor: 0.14, chipCurve: "plastic",
+    slotDepthFactor: 0.5, profileDepthFactor: 1.0,
+    notes: ["Acrylic: use a sharp, polished single-flute (O-flute) or 2-flute upcut tool and feed fast enough to make chips instead of dust — a slow feed with high RPM melts and re-welds the kerf (ATC Spindle / ProPlastics plastics-routing guides). Air blast only; chlorinated or oil-based fluids can craze it."] },
+  { id: "delrin", name: "Acetal / Delrin (POM)", category: "Plastic", materialClass: "plastic",
+    sfmRange: [500, 1000], chipLoadFactor: 0.85, hpFactor: 0.13, chipCurve: "plastic",
+    slotDepthFactor: 0.5, profileDepthFactor: 1.0,
+    notes: ["Acetal machines cleanly and holds tolerance well — keep tools sharp, use air blast, and stage rough then finish so internal stress can relax before the final pass (Curbell dimensional-tolerance guide)."] },
+  { id: "abs", name: "ABS", category: "Plastic", materialClass: "plastic",
+    sfmRange: [300, 600], chipLoadFactor: 0.70, hpFactor: 0.14, chipCurve: "plastic",
+    slotDepthFactor: 0.5, profileDepthFactor: 1.0,
+    notes: ["ABS softens well below 250 F — dull tools or dwelling smears and gums the surface. Sharp 1-2 flute tools, air blast, no dwell."] },
+  { id: "polycarbonate", name: "Polycarbonate (PC)", category: "Plastic", materialClass: "plastic",
+    sfmRange: [500, 1000], chipLoadFactor: 0.50, hpFactor: 0.15, chipCurve: "plastic",
+    slotDepthFactor: 0.5, profileDepthFactor: 1.0,
+    notes: ["Polycarbonate melts and re-fuses if the feed is too slow (ATC Spindle: 0.003-0.008 in/tooth) — use a polished O-flute upcut and air blast. Avoid oil-based coolants (PC absorbs oils and crazes) and keep stress concentrations (sharp inside corners, tight clamping) out of the part (Ready Plastics polycarbonate machining guide: https://www.readyplastics.com/resources/materials/polycarbonate/machining)."] },
+  { id: "nylon66", name: "Nylon 6/6 (extruded)", category: "Plastic", materialClass: "plastic",
+    sfmRange: [500, 1000], chipLoadFactor: 0.60, hpFactor: 0.13, hpFactorEstimate: true, chipCurve: "plastic",
+    slotDepthFactor: 0.5, profileDepthFactor: 1.0,
+    notes: [
+      "Nylon absorbs 2-9% moisture and its CTE is ~5x10^-5 in/in/F, so size moves with humidity and cutting heat — machine dry (compressed air, no flood coolant), let the part cool and relax, and measure at room temperature before the finish cut (Ready Plastics nylon guide: https://www.readyplastics.com/resources/materials/nylon/machining).",
+      "Use 2-3 flute sharp, positive-rake tools; 4-flute mills clog. Dull tools melt the surface and push dimensions. Over-clamping deforms nylon and steel jaws indent it — use soft jaws or wide, flat clamping pads.",
+      "Plan on a finishing pass that is heavy enough to cut, not rub — Curbell notes a heavier finish cut gives a better finish on plastics, and to rough, let the part stabilize, then finish for tight tolerances.",
+    ] },
+  { id: "nylon6_cast", name: "Nylon 6 Cast (MC / Nylatron GS)", category: "Plastic", materialClass: "plastic",
+    sfmRange: [450, 900], chipLoadFactor: 0.60, hpFactor: 0.13, hpFactorEstimate: true, chipCurve: "plastic",
+    slotDepthFactor: 0.5, profileDepthFactor: 1.0,
+    notes: [
+      "Cast nylon 6 and Nylatron GS (MoS2-filled) cut like 6/6 but are slightly more moisture-absorbent and dimensionally mobile; thick cast stock has residual stress — rough, let it relax (hours to days), then finish (Curbell dimensional-tolerance guide; Ready Plastics nylon guide).",
+      "Machine dry with air blast; avoid flood coolant (moisture swells nylon). Steel jaws indent — use soft jaws.",
+    ] },
+  { id: "nylon_gf30", name: "Nylon 6/6 30% Glass-Filled", category: "Plastic", materialClass: "plastic",
+    sfmRange: [200, 400], chipLoadFactor: 0.35, hpFactor: 0.25, hpFactorEstimate: true, chipCurve: "plastic",
+    slotDepthFactor: 0.5, profileDepthFactor: 0.5, abrasive: true,
+    notes: [
+      "Glass-filled nylon is abrasive: carbide minimum (HSS wears rapidly), expect 50-75% shorter tool life than unfilled nylon; diamond-coated or PCD tools pay off on production runs (Ready Plastics nylon guide; Tangram Technology plastics machining guide).",
+      "Speed and chip load are cut roughly 40-60% vs unfilled nylon (Ready Plastics: peripheral 200-400 SFM, 0.003-0.006 in/tooth). Slot and peripheral axial depth limited to 0.5xD.",
+    ] },
+  { id: "uhmw", name: "UHMW-PE (UHMW Polyethylene)", category: "Plastic", materialClass: "plastic",
+    sfmRange: [800, 1400], chipLoadFactor: 1.00, hpFactor: 0.10, hpFactorEstimate: true, chipCurve: "plastic",
+    slotDepthFactor: 0.5, profileDepthFactor: 1.0,
+    notes: [
+      "UHMW smears, melts and springs back if the tool is dull or the chip load is light: use a freshly sharpened carbide 1-2 flute (O-flute) tool, climb mill, and take a real chip — light finishing passes smear instead of cutting (Ready Plastics UHMW guide: https://www.readyplastics.com/resources/materials/uhmw/machining).",
+      "Clamp with wide, flat, evenly distributed pads: localized clamp stress springs back 0.005-0.010 in after release. Dry with air blast; flood coolant washes chips back into the cut.",
+    ] },
+  { id: "hdpe", name: "HDPE", category: "Plastic", materialClass: "plastic",
+    sfmRange: [800, 1400], chipLoadFactor: 1.00, hpFactor: 0.10, hpFactorEstimate: true, chipCurve: "plastic",
+    slotDepthFactor: 0.5, profileDepthFactor: 1.0,
+    notes: [
+      "Dull tools melt and gum HDPE instead of cutting it — use solid-carbide spiral O-flute tools, clear chips with an air blast, reduce pass depth on stock thicker than 1 in, and leave a ~0.020 in floor when through-cutting (Ready Plastics HDPE guide: https://www.readyplastics.com/resources/materials/hdpe/machining).",
+      "Clamp drilled/through-cut parts securely — HDPE can grab the flutes at breakthrough.",
+    ] },
+  { id: "polypropylene", name: "Polypropylene (PP)", category: "Plastic", materialClass: "plastic",
+    sfmRange: [400, 700], chipLoadFactor: 0.60, hpFactor: 0.10, hpFactorEstimate: true, chipCurve: "plastic",
+    slotDepthFactor: 0.4, profileDepthFactor: 1.0,
+    notes: ["PP melts at 320-336 F: tool rubbing or dull edges soften the surface. Slotting should run slower (300-450 SFM) than peripheral/finish cuts (up to 700 SFM). Low stiffness — over-clamping bows the part out of flat after release. Air blast preferred; avoid aromatic hydrocarbon cutting oils (Ready Plastics polypropylene guide: https://www.readyplastics.com/resources/materials/polypropylene/machining)."] },
+  { id: "pvc", name: "PVC (rigid)", category: "Plastic", materialClass: "plastic",
+    sfmRange: [300, 600], chipLoadFactor: 0.50, hpFactor: 0.12, hpFactorEstimate: true, chipCurve: "plastic",
+    slotDepthFactor: 0.5, profileDepthFactor: 1.0,
+    notes: ["PVC softens near 176 F and decomposes above ~392 F releasing corrosive fumes — never dwell, keep chips clearing, use sharp high-positive-rake tools and an air blast. Water-soluble coolant can craze some formulations (Ready Plastics PVC guide: https://www.readyplastics.com/resources/materials/pvc/machining). SFM shown is the published turning range; no milling SFM is published."] },
+  { id: "ptfe", name: "PTFE (Teflon)", category: "Plastic", materialClass: "plastic",
+    sfmRange: [400, 1000], chipLoadFactor: 0.40, hpFactor: 0.10, hpFactorEstimate: true, chipCurve: "plastic",
+    slotDepthFactor: 0.5, profileDepthFactor: 1.0,
+    notes: [
+      "PTFE has very high thermal expansion (a part measured at 73 F is 0.010-0.030 in larger at 150 F) and creeps under clamp load: use soft jaws, collets or distributed-contact fixtures and measure at room temperature (Ready Plastics PTFE guide: https://www.readyplastics.com/resources/materials/ptfe-teflon/machining).",
+      "Cutting forces are low, but sharp, positive-rake (10-15 degree) tools are critical — dull or zero-rake tools smear. Air blast or dry; decomposition fumes above ~500 F (260 C) are toxic, so never let it overheat or dwell.",
+    ] },
+  { id: "peek", name: "PEEK (unfilled)", category: "Plastic", materialClass: "plastic",
+    sfmRange: [500, 900], chipLoadFactor: 0.60, hpFactor: 0.20, hpFactorEstimate: true, chipCurve: "plastic",
+    slotDepthFactor: 0.5, profileDepthFactor: 1.0,
+    notes: [
+      "PEEK holds ~0.001-0.002 in tolerance but builds machining stress: anneal thick stock (>1.5 in) at 150 C for 4-8 h before finish machining and machine within 24 h (Ready Plastics PEEK guide: https://www.readyplastics.com/resources/materials/peek/machining; Drake Plastics PEEK guide).",
+      "Avoid dwelling — a continuous feed prevents localized heat and surface glazing; high SFM with too little chip load glazes the surface. Coolant (water-soluble or petroleum) is acceptable and recommended for deep pockets/slots (>3xD).",
+    ] },
+  { id: "peek_gf30", name: "PEEK 30% Glass / Carbon-Filled", category: "Plastic", materialClass: "plastic",
+    sfmRange: [350, 650], chipLoadFactor: 0.40, hpFactor: 0.28, hpFactorEstimate: true, chipCurve: "plastic",
+    slotDepthFactor: 0.4, profileDepthFactor: 0.8, abrasive: true,
+    notes: ["30% glass/carbon-filled PEEK dulls carbide 3-5x faster than virgin PEEK — reduce speed 20-30%, use PCD/diamond tooling for production, flood coolant for turning; carbon-fiber dust is conductive, so use dust collection (Ready Plastics PEEK guide)."] },
+  { id: "pei_ultem", name: "Ultem PEI (1000, unfilled)", category: "Plastic", materialClass: "plastic",
+    sfmRange: [700, 1000], chipLoadFactor: 0.35, hpFactor: 0.20, hpFactorEstimate: true, chipCurve: "plastic",
+    slotDepthFactor: 0.4, profileDepthFactor: 0.5,
+    notes: [
+      "Ultem is notch-sensitive and stress-cracks: anneal stock before roughing (300 F / 149 C, 1-2 h, slow cool), keep inside corner radii >= 0.031 in, never use chlorinated solvents, ketones (acetone/MEK) or petroleum straight oils, and avoid climb milling on thin or poorly fixtured walls (Ready Plastics Ultem guide: https://www.readyplastics.com/resources/materials/ultem-pei/machining).",
+      "Ready Plastics limits axial depth to 0.5xD, 0.003-0.005 in finish passes, and leaves 0.010-0.020 in for finishing.",
+    ] },
+  { id: "pet_ertalyte", name: "PET-P (Ertalyte)", category: "Plastic", materialClass: "plastic",
+    sfmRange: [250, 450], chipLoadFactor: 0.45, hpFactor: 0.15, hpFactorEstimate: true, chipCurve: "plastic",
+    slotDepthFactor: 0.5, profileDepthFactor: 1.0,
+    notes: ["Ertalyte machines cleanly, low moisture uptake (<0.05% at saturation) — no pre-drying needed — but long stringy chips wrap the tool, so clear chips with air. Climb milling preferred; use soft jaws/collet on thin tube walls (Ready Plastics PET guide: https://www.readyplastics.com/resources/materials/pet/machining)."] },
   { id: "cfrp", name: "Carbon Fiber (CFRP)", category: "Composite", materialClass: "composite",
     sfmRange: [300, 600], chipLoadFactor: 0.6, hpFactor: 0.28,
     slotDepthFactor: 1.0, profileDepthFactor: 1.5 },
@@ -276,7 +383,39 @@ export const OPERATIONS = [
   { id: "facing_rough", name: "Face (Rough)", category: "2D", sfmMult: 0.95, chipMult: 1.0, feedMult: 1.0, wocFactor: 1.0, docMode: "face", adaptive: false },
   { id: "facing_finish", name: "Face (Finish)", category: "2D", sfmMult: 1.05, chipMult: 0.65, feedMult: 1.0, wocFactor: 1.0, docMode: "face", adaptive: false, finishing: true },
   { id: "slotting", name: "Slot", category: "2D", sfmMult: 0.8, chipMult: 1.0, feedMult: 1.0, wocFactor: 1.0, docMode: "slot", adaptive: false, slotDerate: true },
-  { id: "bore", name: "Circular / Bore", category: "2D", sfmMult: 0.8, chipMult: 1.0, feedMult: 1.0, wocFactor: 1.0, docMode: "slot", adaptive: false, slotDerate: true },
+  // LEGACY — kept only so saved calculations / older links that reference
+  // operation_id "bore" still resolve. New work should use the independent
+  // circular toolpaths below (2d_bore_*, 2d_circular_*), which model the real
+  // geometry (hole/boss diameter, circular-interpolation feed correction,
+  // helical entry, finish stock + spring pass) instead of treating every
+  // circular feature as a full-width slot.
+  { id: "bore", name: "Circular / Bore (legacy: full-width slot)", category: "2D", sfmMult: 0.8, chipMult: 1.0, feedMult: 1.0, wocFactor: 1.0, docMode: "slot", adaptive: false, slotDerate: true, legacy: true },
+  // ---------------------------------------------------------------------------
+  // INDEPENDENT CIRCULAR TOOLPATHS (HSMWorks/Fusion "2D Bore" and "Circular"
+  // are separate strategies; a bore, a circular pocket and a boss each load the
+  // tool differently, so each is its own selectable operation).
+  //   circular: "internal" -> tool centerline travels on a circle SMALLER than
+  //             the feature (bore, circular pocket): the cutter edge travels
+  //             FASTER than the programmed centerline feed.
+  //   circular: "external" -> tool centerline travels on a circle LARGER than
+  //             the feature (boss): the cutter edge travels SLOWER than the
+  //             centerline.
+  // Circular-interpolation feed correction (applied in cncEngine.js):
+  //   internal: F_centerline = F_edge x (D_feature - D_tool) / D_feature
+  //   external: F_centerline = F_edge x (D_feature + D_tool) / D_feature
+  // https://www.shader7.com/cnc-circular-interpolation-g02-g03  (both formulas,
+  //   worked 50 mm bore / 12 mm cutter example: 500 -> 380 mm/min, -24%)
+  // https://carbide-tooling.com/tools/helical-interpolation-calculator/
+  //   (internal formula; bore >= 1.05x tool to enter, >= 1.2x for chip
+  //   evacuation; end-mill helix ramp 3-5 deg; < IT7 use boring head/reamer)
+  // Sandvik Coromant Metalcutting Technical Guide (Milling) "Method for
+  //   internal circular interpolation ... tool centre feed".
+  // ---------------------------------------------------------------------------
+  { id: "2d_bore_rough", name: "2D Bore - Helical (Rough)", category: "2D", sfmMult: 1.0, chipMult: 1.0, feedMult: 1.0, wocFactor: 0.15, docMode: "hem", adaptive: true, circular: "internal", circularKind: "bore_rough" },
+  { id: "2d_bore_finish", name: "2D Bore / Circular Wall (Finish)", category: "2D", sfmMult: 1.1, chipMult: 0.7, feedMult: 1.0, wocFactor: 0.04, docMode: "profile", adaptive: true, finishing: true, circular: "internal", circularKind: "bore_finish" },
+  { id: "2d_circular_pocket", name: "2D Circular Pocket (Rough)", category: "2D", sfmMult: 1.0, chipMult: 1.0, feedMult: 1.0, wocFactor: 0.30, docMode: "hem", adaptive: true, circular: "internal", circularKind: "pocket_rough" },
+  { id: "2d_circular_boss_rough", name: "2D Circular Boss (Rough)", category: "2D", sfmMult: 1.0, chipMult: 1.0, feedMult: 1.0, wocFactor: 0.35, docMode: "profile", adaptive: true, peripheralRough: true, circular: "external", circularKind: "boss_rough" },
+  { id: "2d_circular_boss_finish", name: "2D Circular Boss (Finish)", category: "2D", sfmMult: 1.1, chipMult: 0.7, feedMult: 1.0, wocFactor: 0.04, docMode: "profile", adaptive: true, finishing: true, circular: "external", circularKind: "boss_finish" },
   { id: "thread", name: "Thread Milling", category: "2D", sfmMult: 0.8, chipMult: 0.6, feedMult: 1.0, wocFactor: 0.03, docMode: "profile", adaptive: false },
   { id: "drilling", name: "Drilling", category: "2D", sfmMult: 0.8, chipMult: 1.0, feedMult: 1.0, wocFactor: 1.0, docMode: "drill", adaptive: false },
   // Rigid tapping. Feed is NOT chip-load driven — a tap's flutes follow an
@@ -291,12 +430,12 @@ export const OPERATIONS = [
   { id: "3d_adaptive_rough", name: "3D Adaptive Clearing (Rough)", category: "3D", sfmMult: 1.0, chipMult: 1.0, feedMult: 1.0, wocFactor: 0.15, docMode: "hem", adaptive: true, fineStepup: true },
   { id: "3d_adaptive_finish", name: "3D Adaptive Finishing", category: "3D", sfmMult: 1.1, chipMult: 0.8, feedMult: 1.0, wocFactor: 0.04, docMode: "hem", adaptive: true, fineStepup: true, finishing: true },
   { id: "3d_pocket", name: "Pocket / Contour (3D)", category: "3D", sfmMult: 0.95, chipMult: 1.0, feedMult: 1.0, wocFactor: 0.08, docMode: "hem", adaptive: true, fineStepup: true },
-  { id: "3d_parallel", name: "Parallel", category: "3D", sfmMult: 1.1, chipMult: 0.7, feedMult: 1.0, wocFactor: 0.06, docMode: "profile", adaptive: true },
-  { id: "3d_waterline", name: "Contour (Waterline)", category: "3D", sfmMult: 1.05, chipMult: 0.7, feedMult: 1.0, wocFactor: 0.08, docMode: "profile", adaptive: true },
-  { id: "3d_morph", name: "Morph / Blend", category: "3D", sfmMult: 1.1, chipMult: 0.7, feedMult: 1.0, wocFactor: 0.06, docMode: "profile", adaptive: true },
-  { id: "3d_project", name: "Project", category: "3D", sfmMult: 1.1, chipMult: 0.7, feedMult: 1.0, wocFactor: 0.06, docMode: "profile", adaptive: true },
+  { id: "3d_parallel", name: "Parallel", category: "3D", sfmMult: 1.1, chipMult: 0.7, feedMult: 1.0, wocFactor: 0.06, docMode: "profile", adaptive: true, finishing: true },
+  { id: "3d_waterline", name: "Contour (Waterline)", category: "3D", sfmMult: 1.05, chipMult: 0.7, feedMult: 1.0, wocFactor: 0.08, docMode: "profile", adaptive: true, finishing: true },
+  { id: "3d_morph", name: "Morph / Blend", category: "3D", sfmMult: 1.1, chipMult: 0.7, feedMult: 1.0, wocFactor: 0.06, docMode: "profile", adaptive: true, finishing: true },
+  { id: "3d_project", name: "Project", category: "3D", sfmMult: 1.1, chipMult: 0.7, feedMult: 1.0, wocFactor: 0.06, docMode: "profile", adaptive: true, finishing: true },
   { id: "3d_pencil", name: "Pencil / Rest Machining", category: "3D", sfmMult: 1.1, chipMult: 0.6, feedMult: 1.0, wocFactor: 0.05, docMode: "profile", adaptive: true, finishing: true },
-  { id: "3d_radial", name: "Radial / Spiral / Flow", category: "3D", sfmMult: 1.1, chipMult: 0.7, feedMult: 1.0, wocFactor: 0.06, docMode: "profile", adaptive: true },
+  { id: "3d_radial", name: "Radial / Spiral / Flow", category: "3D", sfmMult: 1.1, chipMult: 0.7, feedMult: 1.0, wocFactor: 0.06, docMode: "profile", adaptive: true, finishing: true },
   // Multi-Axis & Special
   { id: "3plus2", name: "3+2 Positioning (Indexed)", category: "Multi-Axis", sfmMult: 1.0, chipMult: 0.8, feedMult: 1.0, wocFactor: 0.08, docMode: "profile", adaptive: true },
   { id: "5axis", name: "Simultaneous 5-Axis", category: "Multi-Axis", sfmMult: 1.0, chipMult: 0.8, feedMult: 1.0, wocFactor: 0.08, docMode: "profile", adaptive: true },
@@ -687,6 +826,35 @@ const CHIP_LOAD_TABLE_SOFT = [
   [1.0, 0.0150],
 ];
 
+// Base chip load per tooth (inches) for PLASTICS, from Harvey Performance's
+// published unfilled-plastics chart, SEMI-ROUGHING row (radial 0.35xD, axial
+// 1xD): ~3.16% of D up to 1/4", ~2.68% of D at 5/16" and larger. (Chart header
+// diameters .016/.031/.047/.062/.078/.093/.125/.187/.250/.312/.375/.500/.625/
+// .750/1.000 map to .00047/.00098/.00148/.00196/.00246/.00293/.00394/.00590/
+// .00789/.00837/.01006/.01341/.01676/.02011/.02682.)
+// https://harveyperformance.widen.net/content/hnlndl2mif/pdf/SF_852000.pdf
+// Individual plastics scale this curve with mat.chipLoadFactor to match their
+// own processor-published IPT window.
+const CHIP_LOAD_TABLE_PLASTIC = [
+  [0.015625, 0.00047],
+  [0.03125, 0.00098],
+  [0.046875, 0.00148],
+  [0.0625, 0.00196],
+  [0.078125, 0.00246],
+  [0.09375, 0.00293],
+  [0.125, 0.00394],
+  [0.1875, 0.00590],
+  [0.25, 0.00789],
+  [0.3125, 0.00837],
+  [0.375, 0.01006],
+  [0.5, 0.01341],
+  [0.625, 0.01676],
+  [0.75, 0.02011],
+  [1.0, 0.02682],
+  [1.5, 0.0402],
+  [2.0, 0.0536],
+];
+
 // Base feed per REVOLUTION (inches) for DRILLING, at the aluminum/soft-metal
 // baseline (scaled down for harder materials by the same mat.chipLoadFactor
 // already used for milling). The end-mill per-TOOTH table above is the wrong
@@ -739,7 +907,7 @@ function interpTable(table, d) {
 }
 
 export function baseChipLoad(diameter, curve = "metal") {
-  const table = curve === "drill" ? CHIP_LOAD_TABLE_DRILL : curve === "soft" ? CHIP_LOAD_TABLE_SOFT : CHIP_LOAD_TABLE_METAL;
+  const table = curve === "drill" ? CHIP_LOAD_TABLE_DRILL : curve === "plastic" ? CHIP_LOAD_TABLE_PLASTIC : curve === "soft" ? CHIP_LOAD_TABLE_SOFT : CHIP_LOAD_TABLE_METAL;
   return interpTable(table, diameter);
 }
 

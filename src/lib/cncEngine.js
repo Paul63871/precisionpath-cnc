@@ -13,6 +13,9 @@ import {
 //   gripDepth (in) — optional: how much of the part height is actually clamped
 //   in the workholding (vise jaw height, chuck depth, fixture pad height, etc.),
 //   jawTypeId — optional: WORKHOLDING_JAW_TYPES id, selects friction coefficient,
+//   priority — "finish" | "balanced" | "speed" (default balanced = IMCO-benchmark behaviour),
+//   featureDiameter (in) — bore/pocket/boss diameter for circular ops; pilotDiameter (in) — pilot hole for helical bore,
+//   targetRa (µin) — finish target that drives ball-nose scallop stepover / feed-mark cap,
 //   clampForce (lbf) — optional: the vise/fixture's actual rated clamping force,
 //   used to give a direct pass/fail instead of just reporting the requirement }
 export function calculate(input) {
@@ -22,15 +25,37 @@ export function calculate(input) {
     leadAngle, cornerRadius, includedAngle, tipDiameter, thickness, neckDiameter, pointAngle,
     radialLoad, axialDoc, featureDepth, threadId, tapStyle, holeType, gripDepth,
     jawTypeId, clampForce,
+    priority, featureDiameter, pilotDiameter, targetRa,
   } = input;
 
   const mat = material || PART_MATERIALS.find((m) => m.id === materialId) || PART_MATERIALS[0];
   const tm = TOOL_MATERIALS.find((t) => t.id === toolMaterialId) || TOOL_MATERIALS[0];
   const coat = COATINGS.find((c) => c.id === coatingId) || COATINGS[0];
   const tt = TOOL_TYPES.find((t) => t.id === toolTypeId) || TOOL_TYPES[0];
-  const op = OPERATIONS.find((o) => o.id === operationId) || OPERATIONS[0];
+  const baseOp = OPERATIONS.find((o) => o.id === operationId) || OPERATIONS[0];
+  // Helical bore opened from SOLID (no pilot hole entered): the first helix is a
+  // full-width cut exactly like a slot, so it takes the slotting speed derate
+  // and slot-depth logic instead of the ring-stepover (HEM-style) logic.
+  const op = (baseOp.circularKind === "bore_rough" && !(pilotDiameter > 0))
+    ? { ...baseOp, docMode: "slot", adaptive: false, slotDerate: true, solidStart: true }
+    : baseOp;
   const m = machine || { hp: 5, maxRpm: 10000, minRpm: 60, maxIpm: 200 };
   const agg = clamp(aggressiveness, 0, 1);
+  // --- Optimize-for priority (finish quality vs. speed) ---
+  // "balanced" (also the default when `priority` is omitted) reproduces the
+  // manufacturer tool-bot benchmark behaviour (IMCO ToolBot etc.) the engine
+  // is regression-tested against. "finish" (the app default) biases every
+  // geometric/feed term toward surface quality: effective aggressiveness for
+  // chip load, stepover, axial depth and HP budget is shifted down 20 points,
+  // WHILE SURFACE SPEED STAYS ON THE UNSHIFTED SLIDER (higher speed with a
+  // lighter chip is what improves finish and avoids built-up edge — CNC
+  // Cookbook, Mitsubishi Materials). The 20-point shift is a documented shop-
+  // judgement bias, not a manufacturer constant; the finishing-specific
+  // limits further below (scallop stepover, feed-mark cap, stock-to-leave,
+  // spring pass) ARE sourced. "speed" shifts +15 points for MRR-focused work.
+  const prio = priority === "finish" || priority === "speed" ? priority : "balanced";
+  const finishFirst = prio === "finish";
+  const aggQ = clamp(agg + (prio === "finish" ? -0.20 : prio === "speed" ? 0.15 : 0), 0, 1);
   // "Required Horse Power" on a machine spec sheet is the rated/nameplate
   // figure, and manufacturer tool bots (e.g. IMCO ToolBot) size cuts against
   // that full rated number directly — they don't separately discount for
@@ -242,7 +267,7 @@ export function calculate(input) {
     doc = holeDepth;
   } else if (tt.id === "slitting_saw" && thickness) {
     woc = thickness; // kerf width = blade thickness
-    doc = diameter * mat.slotDepthFactor * tt.docMult * lerp(0.6, 1.0, agg);
+    doc = diameter * mat.slotDepthFactor * tt.docMult * lerp(0.6, 1.0, aggQ);
     if (loc) doc = Math.min(doc, loc);
   } else if (op.docMode === "slot") {
     woc = diameter;
@@ -250,7 +275,7 @@ export function calculate(input) {
     // 0.25×D under 0.8", 0.50×D from 0.8-2", 1.00×D above 2" — smaller tools
     // need a lower multiple regardless of material toughness).
     const diaBreak = diameter < 0.8 ? 0.25 : diameter < 2.0 ? 0.5 : 1.0;
-    doc = diameter * Math.min(mat.slotDepthFactor, diaBreak) * tt.docMult * lerp(0.6, 1.0, agg);
+    doc = diameter * Math.min(mat.slotDepthFactor, diaBreak) * tt.docMult * lerp(0.6, 1.0, aggQ);
     if (diameter > 0.5) doc = Math.min(doc, diameter * 1.2);
   } else if (op.docMode === "face") {
     woc = diameter;
@@ -265,14 +290,14 @@ export function calculate(input) {
       // Small diameters can't physically take a full 0.010" skim relative to
       // their own size, so it's still capped at 15% of diameter as a floor
       // guard for tiny tools (e.g. a 0.0625" end mill facing a small boss).
-      doc = Math.min(lerp(0.005, 0.010, agg), diameter * 0.15);
+      doc = Math.min(lerp(0.005, 0.010, aggQ), diameter * 0.15);
     } else {
       // Rough facing: existing diameter-scaled formula, which lands in the
       // sourced 0.040-0.120in (~1-3mm) rough-facing band from FastPreci and
       // PTS Make for typical 0.5-1.5in tools:
       // https://www.fastpreci.com/blog/comprehensive-guide-to-face-milling/
       // https://www.ptsmake.com/brass-machining-mastery-10-expert-tactics-for-precision-cost-savings/
-      doc = diameter * 0.1 * lerp(0.7, 1.2, agg);
+      doc = diameter * 0.1 * lerp(0.7, 1.2, aggQ);
     }
   } else if (op.docMode === "hem") {
     // High-Efficiency Machining / adaptive toolpaths. This is a provisional
@@ -302,17 +327,17 @@ export function calculate(input) {
         rMax = Math.max(rMax, 0.40);
         ceilingPct = Math.max(ceilingPct, 0.40);
       }
-      const pct = Math.min(ceilingPct, lerp(rMin, rMax, agg));
+      const pct = Math.min(ceilingPct, lerp(rMin, rMax, aggQ));
       woc = diameter * pct;
       // Safety band for the HP-driven solve: never go narrower than half the
       // table's aggressiveness-0 target (chip-thinning gets extreme below
       // that) or wider than the table's ceiling (chip evacuation / deflection).
       hemWocBounds = { floorPct: rMin * 0.5, ceilingPct };
     } else {
-      woc = diameter * op.wocFactor * lerp(0.8, 1.1, agg);
+      woc = diameter * op.wocFactor * lerp(0.8, 1.1, aggQ);
       hemWocBounds = { floorPct: op.wocFactor * 0.4, ceilingPct: op.wocFactor * 1.1 };
     }
-    doc = diameter * 2.0 * lerp(0.7, 1.2, agg);
+    doc = diameter * 2.0 * lerp(0.7, 1.2, aggQ);
   } else if (op.peripheralRough) {
     // Straight peripheral/contour ROUGHING (side-milling a wall/profile at
     // full axial depth, not trochoidal). This gets the same material-class-
@@ -325,11 +350,11 @@ export function calculate(input) {
     const periphClass = mat.materialClass && PERIPHERAL_ROUGH_WOC_TARGETS[mat.materialClass];
     if (periphClass) {
       const [rMin, rMax] = periphClass.roughPct;
-      const pct = Math.min(periphClass.ceiling, lerp(rMin, rMax, agg));
+      const pct = Math.min(periphClass.ceiling, lerp(rMin, rMax, aggQ));
       woc = diameter * pct;
       hemWocBounds = { floorPct: rMin * 0.5, ceilingPct: periphClass.ceiling };
     } else {
-      woc = diameter * op.wocFactor * lerp(0.8, 1.1, agg);
+      woc = diameter * op.wocFactor * lerp(0.8, 1.1, aggQ);
       hemWocBounds = { floorPct: op.wocFactor * 0.4, ceilingPct: op.wocFactor * 1.1 };
     }
     // Profile (side-milling) axial depth. Cap at 2×D per published ceilings
@@ -337,15 +362,25 @@ export function calculate(input) {
     // publish 1.5-2×D ceilings) unless radial engagement is very light (<10% of
     // diameter), where a long-flute tool can safely go deeper.
     const profCap = (woc / diameter) < 0.10 ? mat.profileDepthFactor : Math.min(mat.profileDepthFactor, 2.0);
-    doc = diameter * profCap * tt.docMult * lerp(0.6, 1.0, agg);
+    doc = diameter * profCap * tt.docMult * lerp(0.6, 1.0, aggQ);
   } else {
-    woc = diameter * op.wocFactor * lerp(0.8, 1.1, agg);
+    woc = diameter * op.wocFactor * lerp(0.8, 1.1, aggQ);
+    // FINISH-FIRST: a finishing pass removes only the stock left by the rough
+    // (Seco: 1-2% of diameter) so its radial engagement belongs in Harvey's
+    // 3-5% of diameter peripheral-FINISHING band (same finishPct band used by
+    // the adaptive-finish branch), not the 6-9% of the legacy flat wocFactor.
+    // Ball-nose finishing stepover is instead set from the scallop-height
+    // limit below. https://www.secotools.com/article/finish_stock_allowance_with_solid_end_mills
+    if (finishFirst && op.finishing && tt.id !== "ball_end") {
+      const fc = mat.materialClass && WOC_CLASS_TARGETS[mat.materialClass];
+      if (fc) woc = Math.min(woc, diameter * lerp(fc.finishPct[0], fc.finishPct[1], aggQ));
+    }
     // Profile (side-milling) axial depth. Cap at 2×D per published ceilings
     // (CGS Tool, Helical/Harvey HEM, Sandvik trochoidal, Autodesk Fusion all
     // publish 1.5-2×D ceilings) unless radial engagement is very light (<10% of
     // diameter), where a long-flute tool can safely go deeper.
     const profCap = (woc / diameter) < 0.10 ? mat.profileDepthFactor : Math.min(mat.profileDepthFactor, 2.0);
-    doc = diameter * profCap * tt.docMult * lerp(0.6, 1.0, agg);
+    doc = diameter * profCap * tt.docMult * lerp(0.6, 1.0, aggQ);
   }
   // CAM-driven paths (HSMWorks 2D & 3D adaptive / rough / finish) hold a set radial
   // engagement; honor the user's set radial load and axial step-down. Axial DOC is
@@ -353,6 +388,36 @@ export function calculate(input) {
   const userPinnedWoc = !!(op.adaptive && radialLoad && radialLoad > 0);
   if (userPinnedWoc) woc = radialLoad;
   if (op.docMode !== "drill" && !tt.isDrill && axialDoc && axialDoc > 0) doc = axialDoc;
+
+  // --- Finishing quality targets (scallop / feed-mark limits) ---
+  // Theoretical-to-real roughness: actual Rz runs ~3x the theoretical cusp
+  // height because of built-up edge, runout and deflection (Mitsubishi
+  // Materials end-mill finishing guide, "Actual surface roughness Rz will be
+  // about 3 times worse than theoretical h": mitsubishicarbide.net/contents/
+  // mmus/enus/manual/end_mills_SRF_INCH.pdf; EngiCalcsHub puts measured Ra at
+  // 2-5x theory). Theoretical Ra of a cusp profile = h/4. So to MEET a target
+  // Ra the theoretical cusp must be h = (4/3) x Ra_target.
+  const raTargetIn = (targetRa && targetRa > 0 ? targetRa : 32) * 1e-6; // default 32 uin Ra (0.8 um, ISO N6)
+  const cuspAllowIn = (4 / 3) * raTargetIn;
+  let scallop = null;
+  const qualityActive = finishFirst || (targetRa && targetRa > 0);
+  if (qualityActive && op.finishing && tt.id === "ball_end" && !userPinnedWoc) {
+    // Ball-nose scallop: h = R - sqrt(R^2 - (s/2)^2)  ->  s = 2 sqrt(2Rh - h^2)
+    // (machinecalcs.com ball-nose stepover calculator; twcindustrial.com CNC
+    // ball endmill calculator; Moldmaking Technology). Stepover is capped so
+    // the predicted surface meets the target Ra.
+    const Rb = diameter / 2;
+    const sMax = 2 * Math.sqrt(Math.max(0, 2 * Rb * cuspAllowIn - cuspAllowIn * cuspAllowIn));
+    if (sMax > 0 && sMax < woc) {
+      woc = sMax;
+      if (hemWocBounds) hemWocBounds = { floorPct: Math.min(hemWocBounds.floorPct, woc / diameter), ceilingPct: Math.min(hemWocBounds.ceilingPct, woc / diameter) };
+    }
+  }
+  if (tt.id === "ball_end" && op.finishing) {
+    const Rb = diameter / 2;
+    const h = Rb - Math.sqrt(Math.max(0, Rb * Rb - (woc / 2) * (woc / 2)));
+    scallop = { cuspHeightIn: h, raTheoreticalUin: (h / 4) * 1e6, raRealisticUin: (h / 4) * 3 * 1e6, stepoverIn: woc, targetRaUin: raTargetIn * 1e6 };
+  }
 
   // Ball nose per-pass axial DOC cap — FINISHING OPERATIONS ONLY.
   // IMCO's own published ball-nose adjustment guide (the same reference this
@@ -499,10 +564,10 @@ export function calculate(input) {
   const chipCurve = isDrillOp ? "drill" : mat.chipCurve === "soft" ? "soft" : "metal";
   let chipLoad;
   if (override?.chipLoad) {
-    chipLoad = override.chipLoad * op.chipMult * lerp(0.8, 1.0, agg);
+    chipLoad = override.chipLoad * op.chipMult * lerp(0.8, 1.0, aggQ);
   } else {
     chipLoad = baseChipLoad(diameter, chipCurve) * mat.chipLoadFactor * op.chipMult * tt.chipMult;
-    chipLoad *= lerp(0.75, 1.05, agg);
+    chipLoad *= lerp(0.75, 1.05, aggQ);
   }
   // Ball nose feed-per-tooth compensation: at reduced effective diameter the
   // edge sweeps a shorter arc per revolution, so the programmed chip load
@@ -537,7 +602,7 @@ export function calculate(input) {
   // 20% utilization at agg=0 rather than 0%, since a near-zero HP target has
   // no meaningful closed-form solution (it would collapse WOC toward zero).
   let hpSolveNote = null;
-  const hpUtilizationTarget = lerp(0.20, 1.0, agg);
+  const hpUtilizationTarget = lerp(0.20, 1.0, aggQ);
   // Applies to HEM/adaptive roughing AND straight peripheral-roughing profile
   // ops (op.peripheralRough) — both populate hemWocBounds above and both want
   // the WOC traded against available HP the same way. Fixed-stepover profile
@@ -616,6 +681,19 @@ export function calculate(input) {
     ipm = rpm * chipLoad * deepHoleFeedFactor; // feed per revolution (reduced for deep holes)
   } else {
     ipm = rpm * chipLoad * flutes * feedMult;
+  }
+  // FINISH-FIRST feed-mark cap: the scallop left between successive tooth
+  // passes along the feed direction is Rt = fz^2 / (4 D) (kinematic cusp of a
+  // cutter of diameter D — Wojciechowski et al., ball-end-milling surface
+  // texture analysis; same geometry as the ball-nose scallop). The programmed
+  // feed per tooth of a FINISHING cut is limited so this cusp stays within the
+  // roughness budget (h = 4/3 x target Ra, see above).
+  let feedMarkCapped = false;
+  if (qualityActive && op.finishing && !(op.docMode === "drill" || tt.isDrill) && flutes > 0 && rpm > 0) {
+    const fzNow = ipm / (rpm * flutes);
+    const Dm = Math.max(effectiveDiameter, diameter * 0.05);
+    const fzMax = Math.sqrt(4 * Dm * cuspAllowIn);
+    if (fzNow > fzMax) { ipm *= fzMax / fzNow; feedMarkCapped = true; }
   }
   const ipmIdeal = ipm;
   ipm = Math.min(ipm, m.maxIpm);
@@ -716,8 +794,135 @@ export function calculate(input) {
     };
   }
 
+  // --- Circular features (bore / circular pocket / boss) ---
+  // The programmed G2/G3 feed acts on the TOOL CENTERLINE, but the chip load
+  // is set at the CUTTING EDGE. Internal: the edge travels on a LARGER circle
+  // than the centerline so the centerline feed must be REDUCED; external: the
+  // edge is on a SMALLER circle so it must be INCREASED:
+  //   internal  F_cl = F_edge x (D_feature - D_tool) / D_feature
+  //   external  F_cl = F_edge x (D_feature + D_tool) / D_feature
+  // https://www.shader7.com/cnc-circular-interpolation-g02-g03
+  // https://carbide-tooling.com/tools/helical-interpolation-calculator/
+  // (Skipping this on a 12 mm cutter in a 50 mm bore runs the edge 32% too
+  // fast; on a boss it runs the edge too slow and rubs.)
+  let circular = null;
+  const circWarn = [];
+  if (op.circular) {
+    const Dh = featureDiameter && featureDiameter > 0 ? featureDiameter : null;
+    const internal = op.circular === "internal";
+    circular = { kind: baseOp.circularKind, internal, featureDiameter: Dh, notes: [] };
+    if (!Dh) {
+      circular.centerlineFactor = 1;
+      circular.centerlineIpm = Number(ipm.toFixed(1));
+      circWarn.push(`Enter the ${internal ? (baseOp.circularKind === "pocket_rough" ? "pocket" : "bore") : "boss"} diameter — without it the circular-interpolation feed correction (centerline vs. cutting-edge feed) cannot be applied, and the displayed feed is the cutting-EDGE feed.`);
+    } else {
+      const factor = internal ? (Dh - diameter) / Dh : (Dh + diameter) / Dh;
+      circular.centerlineFactor = Number(Math.max(0.02, factor).toFixed(3));
+      circular.edgeIpm = Number(ipm.toFixed(1));
+      circular.centerlineIpm = Number((ipm * Math.max(0.02, factor)).toFixed(1));
+      circular.pathDiameter = Number((internal ? Dh - diameter : Dh + diameter).toFixed(4));
+      if (internal) {
+        if (Dh <= diameter * 1.05) circWarn.push(`Bore Ø${Dh}" is not larger than 1.05x the tool (Ø${diameter}") — the cutter cannot orbit; use a smaller tool (carbide-tooling.com helical interpolation guide).`);
+        else if (Dh < diameter * 1.2) circWarn.push(`Bore is only ${(Dh / diameter).toFixed(2)}x the tool diameter — below 1.2x the tool rubs the wall and chip evacuation is poor, chips re-cut and gall the bore. Use a tool at most ~83% of the bore diameter.`);
+        if (diameter / Dh > 0.8) circular.notes.push("Tool is > 80% of the bore: the ring is very thin, so the whole wall engages at once and chip room is minimal — prefer a smaller tool for rough, a larger one only for the finish pass.");
+        if (op.solidStart && Dh > diameter * 2 + 1e-9) {
+          circWarn.push(`Opening Ø${Dh}" from solid with a Ø${diameter}" tool leaves a Ø${(Dh - 2 * diameter).toFixed(3)}" core slug — it will loosen and jam or drop into the cutter. Enter a pilot hole diameter, add ring passes, or drill it out first.`);
+        }
+        // Helical entry: axial pitch per revolution capped by a 3 deg ramp (the low
+        // end of the 3-5 deg end-mill helix limit, carbide-tooling.com) on the path circle.
+        if (baseOp.circularKind === "bore_rough" || baseOp.circularKind === "pocket_rough") {
+          const pathD = Math.max(Dh - diameter, 0.001);
+          const pitchMax = Math.PI * pathD * Math.tan(3 * Math.PI / 180);
+          const pitch = Math.min(doc, pitchMax);
+          const rampDeg = Math.atan(pitch / (Math.PI * pathD)) * 180 / Math.PI;
+          circular.helixPitch = Number(pitch.toFixed(4));
+          circular.rampAngleDeg = Number(rampDeg.toFixed(1));
+          const depthForHelix = featureDepth && featureDepth > 0 ? featureDepth : doc;
+          circular.helixTurns = Math.max(1, Math.ceil(depthForHelix / pitch));
+          if (pitch < doc * 0.999) circular.notes.push(`Helical pitch limited to ${pitch.toFixed(4)}" per revolution (3° ramp on a Ø${pathD.toFixed(3)}" path circle) — the cut is shallower per turn than the ${doc.toFixed(3)}" step-down because the hole is small relative to the tool.`);
+        }
+        // Radial ring passes
+        if (baseOp.circularKind === "pocket_rough") {
+          const radiusTravel = (Dh - diameter) / 2;
+          circular.ringPasses = Math.max(1, Math.ceil(radiusTravel / Math.max(woc, 1e-4)));
+        } else if (baseOp.circularKind === "bore_rough" && pilotDiameter > 0) {
+          const stockPerSide = Math.max(0, (Dh - pilotDiameter) / 2);
+          circular.ringPasses = Math.max(1, Math.ceil(stockPerSide / Math.max(woc, 1e-4)));
+          circular.stockPerSide = Number(stockPerSide.toFixed(4));
+        }
+      } else if (baseOp.circularKind === "boss_rough" || baseOp.circularKind === "boss_finish") {
+        circular.notes.push("Boss: the cutter edge is on a smaller circle than the centerline path, so the centerline feed is raised. Approach and exit on a tangent arc so the tool does not dwell on the wall.");
+      }
+      if (baseOp.finishing) {
+        circular.notes.push("Run a spring pass (repeat the finish circle at zero radial infeed) to remove deflection error and taper, and finish with a fresh tool (Shader7 circular-interpolation guide; Seco finish-stock guide).");
+        if (internal) circular.notes.push("Tolerance tighter than IT7 (~0.0007-0.0010\" on a 1\" bore) is a boring-head or reamer job — a circular-interpolated end mill leaves a slightly tapered, deflection-limited bore (carbide-tooling.com).");
+      } else if (internal) {
+        circular.notes.push("Leave finish stock on the bore wall (see Finish Plan) and cut the final size with the Bore Finish operation.");
+      }
+      if (internal && circular.centerlineFactor < 0.6) circWarn.push(`Centerline feed is only ${Math.round(circular.centerlineFactor * 100)}% of the cutting-edge feed because the tool is large relative to the bore — program ${circular.centerlineIpm} IPM on the G2/G3 path (not ${circular.edgeIpm}) or the edge will run ${Math.round((1 / circular.centerlineFactor - 1) * 100)}% too fast.`);
+    }
+  }
+
+  // --- Finish plan (stock to leave, spring pass, predicted finish) ---
+  // Seco Tools: finish stock allowance is 1-2% of the finishing cutter
+  // diameter (most manufacturers base finishing data on that engagement), and
+  // for tools below ~3 mm leave ~2% so the edge still bites. Leaving more
+  // than that "will result in lost productivity"; leaving less rubs.
+  let finishPlan = null;
+  const isMillingCut = !(op.docMode === "drill" || op.docMode === "tap" || tt.isDrill || tt.isTap);
+  if (isMillingCut && op.id !== "engrave" && op.id !== "thread" && tt.id !== "slitting_saw") {
+    const stock = Math.max(0.002, diameter * (diameter < 0.125 ? 0.02 : 0.015));
+    if (op.finishing) {
+      finishPlan = {
+        role: "finish",
+        springPass: true,
+        climb: true,
+        freshTool: true,
+        priority: prio,
+        scallop,
+        feedMarkCapped,
+        notes: [
+          "Climb mill the finish pass, take it with a fresh/dedicated tool, and repeat the final pass once at zero radial infeed (spring pass) to cancel tool deflection.",
+        ],
+      };
+    } else {
+      finishPlan = {
+        role: "rough",
+        stockToLeaveRadial: Number(stock.toFixed(4)),
+        stockToLeaveAxial: Number(stock.toFixed(4)),
+        priority: prio,
+        notes: [
+          `Leave ~${stock.toFixed(3)}" (1.5-2% of the tool diameter, Seco Tools) on walls and floors for the finish operation. Leaving more wastes time; leaving less makes the finish tool rub on work-hardened or deflected material.`,
+        ],
+      };
+    }
+  }
+
+  // --- Tool deflection (worst-case estimate) ---
+  // Cantilever beam: delta = F L^3 / (3 E I), I = pi d^4 / 64 with the flute
+  // core taken as 0.8 D (same cantilever model as online-tools.work/metal/en/
+  // tool-deflection and formulafactory.tools tool-deflection calculator).
+  // F is the TANGENTIAL cutting force (hp x 33000 / SFM), which is an upper
+  // bound on the radial force that actually pushes the tool off the wall, and
+  // L is the flute length (the real stickout is at least this long) — so this
+  // is a conservative screening number, not a measurement.
+  let deflection = null;
+  if (isMillingCut && hpAtCutter > 0 && sfm > 0 && loc > 0) {
+    const Fc = (hpRequired * 33000) / sfm;
+    const E = tm.id === "carbide" ? 87e6 : 30e6; // psi: cemented carbide ~600 GPa, HSS/cobalt steel ~207 GPa
+    const dCore = 0.8 * diameter;
+    const I = (Math.PI * Math.pow(dCore, 4)) / 64;
+    const delta = (Fc * Math.pow(loc, 3)) / (3 * E * I);
+    deflection = { estimateIn: Number(delta.toFixed(5)), forceLbf: Number(Fc.toFixed(1)), limitIn: 0.001 };
+  }
+
   // --- Warnings ---
-  const warnings = [...thinningNotes];
+  const warnings = [...thinningNotes, ...circWarn];
+  if (mat.notes && mat.notes.length) for (const n of mat.notes) warnings.push(`${mat.name}: ${n}`);
+  if (mat.abrasive && (tm.id === "hss" || tm.id === "cobalt")) warnings.push(`${mat.name} is abrasive — ${tm.name} will wear very quickly; use solid carbide (diamond-coated or PCD for production).`);
+  if (mat.materialClass === "plastic" && clampForce && clampForce > 1500) warnings.push(`Plastics deform under clamping load that is routine for metal — your vise is rated ${Math.round(clampForce)} lbf. Torque it down just enough to hold (cutting forces in plastic are a few pounds), use wide flat soft jaws or vacuum, and re-measure after release (Ready Plastics: over-clamping bows/pinches nylon, PP, PTFE and Ertalyte).`);
+  if (finishFirst && op.finishing && deflection && deflection.estimateIn > deflection.limitIn) warnings.push(`Finish quality: estimated worst-case tool deflection is ${deflection.estimateIn.toFixed(4)}" (> ${deflection.limitIn}") at ${loc}" LOC — shorten the stickout, use a larger/stub tool, or add a spring pass; a deflected finish pass leaves taper and a step at the end of the cut.`);
+  if (feedMarkCapped) warnings.push(`Finish quality: feed per tooth was reduced so the theoretical feed-mark cusp (fz²/4D) stays within the ${Math.round(raTargetIn * 1e6)} µin Ra target.`);
   if (sfmCapped) warnings.push(`SFM capped at ${Math.round(sfmHardCap)} (105% of ${mat.name}'s published range) — the stacked aggressiveness/operation/coating multipliers wanted a higher speed than this material and coating can realistically sustain.`);
   if (tt.id === "ball_end" && effectiveDiameter < diameter * 0.999) warnings.push(`Ball nose effective cutting diameter is ${effectiveDiameter.toFixed(3)}" at ${doc.toFixed(3)}" axial DOC (nominal diameter ${diameter}") — RPM and chip load are computed from this smaller effective diameter, not the nominal one, per standard ball-nose speed/feed correction.`);
   if (hpSolveNote) warnings.push(hpSolveNote);
@@ -774,6 +979,10 @@ export function calculate(input) {
     sfmCapped,
     overhang,
     workholding,
+    priority: prio,
+    circular,
+    finishPlan,
+    deflection,
     warnings,
   };
 }

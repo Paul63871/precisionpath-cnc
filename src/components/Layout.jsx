@@ -1,9 +1,10 @@
 import React from "react";
 import { Link, useLocation, useNavigate, Outlet } from "react-router-dom";
-import { Cpu, Bookmark, Boxes, Cog, Sliders, ArrowLeft, BookOpen } from "lucide-react";
+import { Cpu, Bookmark, Boxes, Cog, Sliders, ArrowLeft, BookOpen, Disc3 } from "lucide-react";
 
 const NAV = [
   { to: "/", label: "Calculator", title: "Calculator", icon: Cpu },
+  { to: "/turning", label: "Turning", title: "Turning", icon: Disc3 },
   { to: "/saved-calculations", label: "Saved", title: "Saved Calculations", icon: Bookmark },
   { to: "/materials", label: "Materials", title: "Materials", icon: Boxes },
   { to: "/machine-profiles", label: "Machines", title: "Machine Profiles", icon: Cog },

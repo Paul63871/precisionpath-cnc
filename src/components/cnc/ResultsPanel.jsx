@@ -95,6 +95,78 @@ export default function ResultsPanel({ result, units = "imperial" }) {
           )}
         </div>
       )}
+      {result.circular && (
+        <div className="rounded-lg border border-border bg-card px-4 py-3 space-y-2.5">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Circular Toolpath — {result.circular.internal ? "Internal (bore / pocket)" : "External (boss)"}
+            </span>
+            {result.circular.featureDiameter && (
+              <span className="font-mono text-sm font-semibold text-brand">Ø{fmt(lenFromImp(result.circular.featureDiameter, units), 3)} {u.length}</span>
+            )}
+          </div>
+          {result.circular.centerlineIpm != null && (
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-md bg-muted px-3 py-2">
+                <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Cutting-edge feed</div>
+                <div className="font-mono text-base tabular-nums">{feedFromImp(result.circular.edgeIpm ?? result.ipm, units).toLocaleString(undefined, { maximumFractionDigits: 1 })} <span className="text-xs text-muted-foreground">{u.feed}</span></div>
+              </div>
+              <div className="rounded-md bg-brand/10 px-3 py-2">
+                <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Program on G2/G3 path</div>
+                <div className="font-mono text-base tabular-nums text-brand font-semibold">{feedFromImp(result.circular.centerlineIpm, units).toLocaleString(undefined, { maximumFractionDigits: 1 })} <span className="text-xs text-muted-foreground">{u.feed}</span></div>
+              </div>
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+            {result.circular.centerlineFactor != null && result.circular.featureDiameter && (
+              <div className="flex justify-between col-span-2"><span className="text-muted-foreground">Centerline feed factor</span><span className="font-mono">{result.circular.centerlineFactor}× ({result.circular.internal ? "(Dfeature − Dtool) / Dfeature" : "(Dfeature + Dtool) / Dfeature"})</span></div>
+            )}
+            {result.circular.pathDiameter != null && (
+              <div className="flex justify-between"><span className="text-muted-foreground">Tool path circle Ø</span><span className="font-mono">{fmt(lenFromImp(result.circular.pathDiameter, units), 3)} {u.length}</span></div>
+            )}
+            {result.circular.helixPitch != null && (
+              <div className="flex justify-between"><span className="text-muted-foreground">Helix pitch / rev</span><span className="font-mono">{fmt(lenFromImp(result.circular.helixPitch, units), 3)} {u.length} @ {result.circular.rampAngleDeg}°</span></div>
+            )}
+            {result.circular.helixTurns != null && (
+              <div className="flex justify-between"><span className="text-muted-foreground">Helix turns to depth</span><span className="font-mono">{result.circular.helixTurns}</span></div>
+            )}
+            {result.circular.ringPasses != null && (
+              <div className="flex justify-between"><span className="text-muted-foreground">Radial ring passes</span><span className="font-mono">{result.circular.ringPasses}</span></div>
+            )}
+          </div>
+          {result.circular.notes.length > 0 && (
+            <div className="space-y-1 pt-0.5">
+              {result.circular.notes.map((n, i) => (<p key={i} className="text-[11px] text-muted-foreground leading-relaxed">• {n}</p>))}
+            </div>
+          )}
+        </div>
+      )}
+      {result.finishPlan && (
+        <div className="rounded-lg border border-border bg-card px-4 py-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{result.finishPlan.role === "finish" ? "Finish Pass Plan" : "Finish Allowance"}</span>
+            <span className="text-[10px] font-medium rounded bg-muted px-1.5 py-0.5 text-muted-foreground uppercase">{result.priority === "finish" ? "Finish priority" : result.priority === "speed" ? "Speed priority" : "Balanced"}</span>
+          </div>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+            {result.finishPlan.stockToLeaveRadial != null && (
+              <>
+                <div className="flex justify-between"><span className="text-muted-foreground">Leave on walls</span><span className="font-mono">{fmt(lenFromImp(result.finishPlan.stockToLeaveRadial, units), 3)} {u.length}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Leave on floors</span><span className="font-mono">{fmt(lenFromImp(result.finishPlan.stockToLeaveAxial, units), 3)} {u.length}</span></div>
+              </>
+            )}
+            {result.finishPlan.scallop && (
+              <>
+                <div className="flex justify-between"><span className="text-muted-foreground">Scallop height</span><span className="font-mono">{fmt(lenFromImp(result.finishPlan.scallop.cuspHeightIn, units) * (units === "metric" ? 1000 : 1e6), 1)} {units === "metric" ? "µm" : "µin"}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Predicted Ra (theory → real)</span><span className="font-mono">{fmt(result.finishPlan.scallop.raTheoreticalUin, 0)} → {fmt(result.finishPlan.scallop.raRealisticUin, 0)} µin</span></div>
+              </>
+            )}
+            {result.deflection && (
+              <div className="flex justify-between col-span-2"><span className="text-muted-foreground">Tool deflection (worst-case est.)</span><span className={`font-mono ${result.deflection.estimateIn > result.deflection.limitIn ? "text-destructive" : ""}`}>{fmt(lenFromImp(result.deflection.estimateIn, units), units === "metric" ? 4 : 5)} {u.length}</span></div>
+            )}
+          </div>
+          {result.finishPlan.notes.map((n, i) => (<p key={i} className="text-[11px] text-muted-foreground leading-relaxed">• {n}</p>))}
+        </div>
+      )}
       <div className="rounded-lg border border-border bg-card px-4 py-3">
         <div className="flex items-center justify-between text-xs text-muted-foreground">
           <span>Surface Speed</span><span className="font-mono">{fmt(surfaceFromImp(result.sfm, units), 1)} {u.surface}</span>

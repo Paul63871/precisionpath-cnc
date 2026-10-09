@@ -269,9 +269,22 @@ tool_steel  | Tool Steel (A2/D2)       | Steel        | 150-280  | 0.35 | 2.3  |
 wood_hard   | Hardwood (Maple/Oak)     | Wood         | 500-1000 | 1.2  | 0.12 | 1.0  | 3.0
 wood_soft   | Softwood (Pine)          | Wood         | 600-1100 | 1.3  | 0.10 | 1.0  | 3.0
 mdf         | MDF / Plywood            | Wood         | 500-1000 | 1.1  | 0.10 | 1.0  | 2.5
-acrylic     | Acrylic (PMMA)           | Plastic      | 300-600  | 0.9  | 0.14 | 0.9  | 2.0
-delrin      | Delrin (POM)             | Plastic      | 400-800  | 1.0  | 0.13 | 1.0  | 2.5
-abs         | ABS / Polycarbonate      | Plastic      | 300-600  | 0.9  | 0.14 | 0.9  | 2.0
+acrylic     | Acrylic (PMMA)                | Plastic | 500-1000 | 0.7 | 0.14 | 0.5 | 1
+delrin      | Acetal / Delrin (POM)         | Plastic | 500-1000 | 0.85 | 0.13 | 0.5 | 1
+abs         | ABS                           | Plastic | 300-600 | 0.7 | 0.14 | 0.5 | 1
+polycarbonate| Polycarbonate (PC)            | Plastic | 500-1000 | 0.5 | 0.15 | 0.5 | 1
+nylon66     | Nylon 6/6 (extruded)          | Plastic | 500-1000 | 0.6 | 0.13 | 0.5 | 1 | hp est.
+nylon6_cast | Nylon 6 Cast (MC / Nylatron GS)| Plastic | 450-900 | 0.6 | 0.13 | 0.5 | 1 | hp est.
+nylon_gf30  | Nylon 6/6 30% Glass-Filled    | Plastic | 200-400 | 0.35 | 0.25 | 0.5 | 0.5 | ABRASIVE | hp est.
+uhmw        | UHMW-PE (UHMW Polyethylene)   | Plastic | 800-1400 | 1 | 0.1 | 0.5 | 1 | hp est.
+hdpe        | HDPE                          | Plastic | 800-1400 | 1 | 0.1 | 0.5 | 1 | hp est.
+polypropylene| Polypropylene (PP)            | Plastic | 400-700 | 0.6 | 0.1 | 0.4 | 1 | hp est.
+pvc         | PVC (rigid)                   | Plastic | 300-600 | 0.5 | 0.12 | 0.5 | 1 | hp est.
+ptfe        | PTFE (Teflon)                 | Plastic | 400-1000 | 0.4 | 0.1 | 0.5 | 1 | hp est.
+peek        | PEEK (unfilled)               | Plastic | 500-900 | 0.6 | 0.2 | 0.5 | 1 | hp est.
+peek_gf30   | PEEK 30% Glass / Carbon-Filled| Plastic | 350-650 | 0.4 | 0.28 | 0.4 | 0.8 | ABRASIVE | hp est.
+pei_ultem   | Ultem PEI (1000, unfilled)    | Plastic | 700-1000 | 0.35 | 0.2 | 0.4 | 0.5 | hp est.
+pet_ertalyte| PET-P (Ertalyte)              | Plastic | 250-450 | 0.45 | 0.15 | 0.5 | 1 | hp est.
 cfrp        | Carbon Fiber (CFRP)      | Composite    | 200-450  | 0.6  | 0.28 | 0.6  | 1.5
 g10         | G10 / FR4                | Composite    | 250-500  | 0.7  | 0.25 | 0.7  | 1.7
 g11         | G11 / FR5                | Composite    | 225-450  | 0.7  | 0.28 | 0.62 | 1.5
@@ -334,36 +347,43 @@ pointAngle    | angle  | step 1
 thickness     | length | step 0.001
 neckDiameter  | length | step 0.001
 
-4.6 OPERATIONS (22)
-[id | name | category | sfmMult | chipMult | feedMult | wocFactor | docMode | adaptive | fineStepup]
+4.6 OPERATIONS (29)
+[id | name | category | sfmMult | chipMult | feedMult | wocFactor | docMode | adaptive | flags]
 
 2D / 2.5-AXIS:
-2d_adaptive_rough | 2D Adaptive Clearing (Rough) | 2D | 1.0 | 1.1 | 1.0 | 0.055| hem     | true  | -
-2d_adaptive_finish| 2D Adaptive Finishing       | 2D | 1.1 | 0.8 | 1.0 | 0.04 | hem     | true  | -
-2d_pocket        | 2D Pocket                    | 2D | 1.0 | 1.0 | 1.0 | 0.3  | hem     | true  | -
-2d_contour       | 2D Contour                   | 2D | 1.1 | 0.7 | 1.0 | 0.08 | profile | true  | -
-facing_rough     | Face (Rough)                 | 2D | 0.95| 1.0 | 1.0 | 1.0  | face    | false | -
-facing_finish    | Face (Finish)                | 2D | 1.05| 0.65| 1.0 | 1.0  | face    | false | finishing
-slotting         | Slot                         | 2D | 0.9 | 1.0 | 1.0 | 1.0  | slot    | false | -
-bore             | Circular / Bore              | 2D | 0.9 | 1.0 | 1.0 | 1.0  | slot    | false | -
-thread           | Thread Milling               | 2D | 0.8 | 0.6 | 1.0 | 0.03 | profile | false | -
-drilling         | Drilling                     | 2D | 0.8 | 1.0 | 1.0 | 1.0  | drill   | false | -
-engrave          | 2D Engrave                   | 2D | 1.0 | 0.4 | 1.0 | 0.02 | profile | false | -
+2d_adaptive_rough | 2D Adaptive Clearing (Rough) | 2D | 1 | 1.1 | 1 | 0.15 | hem | true | -
+2d_adaptive_finish | 2D Adaptive Finishing | 2D | 1.1 | 0.8 | 1 | 0.04 | hem | true | finishing
+2d_pocket | 2D Pocket | 2D | 1 | 1 | 1 | 0.3 | hem | true | -
+2d_contour_rough | 2D Contour / Peripheral (Rough) | 2D | 1 | 1 | 1 | 0.35 | profile | true | peripheralRough
+2d_contour_finish | 2D Contour / Peripheral (Finish) | 2D | 1.1 | 0.7 | 1 | 0.08 | profile | true | finishing
+facing_rough | Face (Rough) | 2D | 0.95 | 1 | 1 | 1 | face | false | -
+facing_finish | Face (Finish) | 2D | 1.05 | 0.65 | 1 | 1 | face | false | finishing
+slotting | Slot | 2D | 0.8 | 1 | 1 | 1 | slot | false | -
+bore | Circular / Bore (legacy: full-width slot) | 2D | 0.8 | 1 | 1 | 1 | slot | false | LEGACY (hidden from picker)
+2d_bore_rough | 2D Bore - Helical (Rough) | 2D | 1 | 1 | 1 | 0.15 | hem | true | circular:internal/bore_rough
+2d_bore_finish | 2D Bore / Circular Wall (Finish) | 2D | 1.1 | 0.7 | 1 | 0.04 | profile | true | finishing,circular:internal/bore_finish
+2d_circular_pocket | 2D Circular Pocket (Rough) | 2D | 1 | 1 | 1 | 0.3 | hem | true | circular:internal/pocket_rough
+2d_circular_boss_rough | 2D Circular Boss (Rough) | 2D | 1 | 1 | 1 | 0.35 | profile | true | peripheralRough,circular:external/boss_rough
+2d_circular_boss_finish | 2D Circular Boss (Finish) | 2D | 1.1 | 0.7 | 1 | 0.04 | profile | true | finishing,circular:external/boss_finish
+thread | Thread Milling | 2D | 0.8 | 0.6 | 1 | 0.03 | profile | false | -
+drilling | Drilling | 2D | 0.8 | 1 | 1 | 1 | drill | false | -
+tapping | Tapping | 2D | 1 | 1 | 1 | 1 | tap | false | -
+engrave | 2D Engrave | 2D | 1 | 0.4 | 1 | 0.02 | profile | false | -
 
 3D / HIGH-SPEED MACHINING:
-3d_adaptive_rough | 3D Adaptive Clearing (Rough)| 3D | 1.0 | 1.0 | 1.0 | 0.06 | hem     | true | true
-3d_adaptive_finish| 3D Adaptive Finishing       | 3D | 1.1 | 0.8 | 1.0 | 0.04 | hem     | true | true
-3d_pocket         | Pocket / Contour (3D)       | 3D | 0.95| 1.0 | 1.0 | 0.08 | hem     | true | true
-3d_parallel       | Parallel                    | 3D | 1.1 | 0.7 | 1.0 | 0.06 | profile | true | -
-3d_waterline      | Contour (Waterline)         | 3D | 1.05| 0.7 | 1.0 | 0.08 | profile | true | -
-3d_morph          | Morph / Blend               | 3D | 1.1 | 0.7 | 1.0 | 0.06 | profile | true | -
-3d_project        | Project                     | 3D | 1.1 | 0.7 | 1.0 | 0.06 | profile | true | -
-3d_pencil         | Pencil / Rest Machining      | 3D | 1.1 | 0.6 | 1.0 | 0.05 | profile | true | -
-3d_radial         | Radial / Spiral / Flow      | 3D | 1.1 | 0.7 | 1.0 | 0.06 | profile | true | -
+3d_adaptive_rough | 3D Adaptive Clearing (Rough) | 3D | 1 | 1 | 1 | 0.15 | hem | true | fineStepup
+3d_adaptive_finish | 3D Adaptive Finishing | 3D | 1.1 | 0.8 | 1 | 0.04 | hem | true | finishing,fineStepup
+3d_pocket | Pocket / Contour (3D) | 3D | 0.95 | 1 | 1 | 0.08 | hem | true | fineStepup
+3d_parallel | Parallel | 3D | 1.1 | 0.7 | 1 | 0.06 | profile | true | finishing
+3d_waterline | Contour (Waterline) | 3D | 1.05 | 0.7 | 1 | 0.08 | profile | true | finishing
+3d_morph | Morph / Blend | 3D | 1.1 | 0.7 | 1 | 0.06 | profile | true | finishing
+3d_project | Project | 3D | 1.1 | 0.7 | 1 | 0.06 | profile | true | finishing
+3d_pencil | Pencil / Rest Machining | 3D | 1.1 | 0.6 | 1 | 0.05 | profile | true | finishing
+3d_radial | Radial / Spiral / Flow | 3D | 1.1 | 0.7 | 1 | 0.06 | profile | true | finishing
 
 MULTI-AXIS & SPECIAL:
-3plus2 | 3+2 Positioning (Indexed) | Multi-Axis | 1.0 | 0.8 | 1.0 | 0.08 | profile | true | -
-5axis  | Simultaneous 5-Axis        | Multi-Axis | 1.0 | 0.8 | 1.0 | 0.08 | profile | true | -
+3plus2 | 3+2 Positioning (Indexed) | Multi-Axis | 1 | 0.8 | 1 | 0.08 | profile | true | -
+5axis | Simultaneous 5-Axis | Multi-Axis | 1 | 0.8 | 1 | 0.08 | profile | true | -
 
 4.7 BASE CHIP LOAD TABLE (inches per tooth, by diameter)
 Interpolated linearly between rows; clamped to [0.005", 2.0"].
@@ -512,6 +532,176 @@ applied (ft-lbs). Process:
   shallow
 - Conservative defaults + user-driven aggressiveness — never auto-pushes unsafe
   params
+
+================================================================================
+10. FINISH-QUALITY MODEL (Optimize For: Finish quality | Balanced | Speed)
+================================================================================
+input.priority = "finish" | "balanced" | "speed". The UI default is "finish"
+(stored in localStorage as pp_priority). The ENGINE default when priority is
+omitted is "balanced" = the original IMCO-ToolBot-benchmarked behaviour, so all
+regression tests and saved results are unchanged.
+
+Effective aggressiveness for chip load, WOC, DOC and the HP budget:
+  finish   : aggressiveness - 0.20
+  balanced : aggressiveness
+  speed    : aggressiveness + 0.15
+Surface speed (SFM) stays on the UNSHIFTED slider in every mode: a higher
+surface speed with a lighter chip improves finish and discourages built-up edge.
+The +/-0.20 / +0.15 shifts are a documented SHOP-JUDGEMENT bias, not a
+manufacturer constant. Everything below is sourced.
+
+10.1 Finishing passes (any op flagged finishing:true — 2D contour/bore/boss
+     finish, face finish, adaptive finish, and the 3D parallel / waterline /
+     morph / project / radial finishing strategies)
+- Radial engagement of flat-tool finishing = Harvey peripheral-finishing band
+  3-5% of D (WOC_CLASS_TARGETS.finishPct), not the 8% roughing-derived factor.
+- Ball-nose stepover from the scallop formula
+    h = R - sqrt(R^2 - (s/2)^2)   ->   s = 2 sqrt(2 R h - h^2)
+  where the allowed cusp is h = (4/3) x Ra_target. Theoretical Ra of a cusp
+  profile = h/4 and measured roughness runs ~3x theory (built-up edge, runout,
+  deflection), so h = 4 Ra / 3 lands on the target. Default target Ra = 32 uin
+  (0.8 um); editable per cut (input.targetRa).
+- Feed-mark cap: cusp Rt = fz^2 / (4 D). Programmed feed per tooth is limited
+  so Rt <= h (same allowed cusp).
+- Finish stock on the preceding rough: 1.5% of diameter (2% below 1/8"), min
+  0.002" (Seco: 1-2% of D; a 1/2" tool leaves <= 0.005-0.010"); finish with a
+  fresh tool; one spring pass (repeat at zero radial infeed); climb milling.
+- Tool deflection warning: cantilever delta = F L^3 / (3 E I), E carbide
+  87 Msi / HSS 30 Msi, flute core 0.8 D, F = tangential cutting force (an
+  UPPER BOUND on radial force), L = flute length. Flagged when > 0.001" on a
+  finishing op. Labelled "worst-case estimate".
+
+SOURCES
+- https://www.secotools.com/article/finish_stock_allowance_with_solid_end_mills
+- https://www.mitsubishicarbide.net/contents/mmus/enus/manual/end_mills_SRF_INCH.pdf
+- https://machinecalcs.com/ball-nose-stepover-calculator
+- https://engicalchub.com/guides/ball-nose-surface-finish-guide/
+- Wojciechowski et al., ball-end milling surface texture (Rt = fz^2 / 4D):
+  https://yadda.icm.edu.pl/baztech/element/bwmeta1.element.baztech-15ff926f-4537-405d-8d9c-13cd60431fe7/c/Wojciechowski.pdf
+- Harvey Tool peripheral-finishing engagement bands (see section 4)
+
+================================================================================
+11. CIRCULAR TOOLPATHS (independent bore / circular-pocket / boss operations)
+================================================================================
+The old single "Circular / Bore" full-width-slot operation (id bore) is kept
+only as a LEGACY id so saved calculations still open; it no longer appears in
+the operation picker. New, independently selectable operations:
+  2d_bore_rough         2D Bore - Helical (Rough)        internal
+  2d_bore_finish        2D Bore / Circular Wall (Finish) internal, finishing
+  2d_circular_pocket    2D Circular Pocket (Rough)       internal, ring clearing
+  2d_circular_boss_rough  2D Circular Boss (Rough)       external
+  2d_circular_boss_finish 2D Circular Boss (Finish)      external, finishing
+New inputs: featureDiameter (hole / pocket / boss diameter) and, for helical
+bore, pilotDiameter (blank = open from solid -> full-width slot loading with the
+slot speed derate).
+
+Feed correction on the G2/G3 path. The programmed feed acts on the tool
+CENTERLINE; chip load is set at the cutting EDGE:
+  internal  F_centerline = F_edge x (D_feature - D_tool) / D_feature
+  external  F_centerline = F_edge x (D_feature + D_tool) / D_feature
+Worked example (Shader7): 50 mm bore, 12 mm cutter, 500 mm/min at the edge ->
+380 mm/min on the centerline (-24%). Results show BOTH numbers.
+Warnings: bore <= 1.05 x tool (cannot orbit); bore < 1.2 x tool (rubbing / poor
+chip evacuation; keep >= 20% radial clearance); opening Dh > 2 x Dt from solid
+leaves a core slug of (Dh - 2 Dt); helix ramp capped at 3 deg (end mills 3-5
+deg) so pitch <= pi (Dh - Dt) tan 3 deg; ring passes = ceil(radius / WOC).
+Bore finish: stock-to-leave + spring pass; tolerance tighter than IT7 -> boring
+head or reamer, not an interpolated end mill.
+SOURCES
+- https://www.shader7.com/cnc-circular-interpolation-g02-g03
+- https://carbide-tooling.com/tools/helical-interpolation-calculator/
+- https://www.ctemag.com/sites/www.ctemag.com/files/archive_pdf/0608-HelicalInterpol.pdf
+- Sandvik Coromant Milling technical guide (internal circular interpolation, tool-centre feed)
+
+================================================================================
+12. PLASTICS
+================================================================================
+16 plastics replace the old acrylic / Delrin / "ABS-Polycarbonate" entries
+(table in 4.1): acrylic, Delrin, ABS, polycarbonate, nylon 6/6, cast nylon 6,
+30% glass-filled nylon, UHMW-PE, HDPE, polypropylene, PVC, PTFE, PEEK,
+glass-filled PEEK, PEI (Ultem), PET (Ertalyte). chipCurve = "plastic" uses
+Harvey Tool's semi-roughing unfilled-plastics chip load (3.16% D up to 1/4",
+2.68% D from 5/16", extended proportionally beyond the published range).
+Speeds follow Harvey's plastics chart (hard unfilled 800-1200 SFM, soft
+unfilled 1200-1600) tempered by each processor's guide (Ready Plastics,
+Curbell). Every material carries notes[] shown as warnings: moisture and
+thermal growth (nylon), melting/gumming (PE, PP, PTFE), stress cracking and
+coolant compatibility (acrylic, PC, PEI), clamp distortion, annealing, and
+abrasive fillers (glass-filled grades: carbide minimum, diamond/PCD for volume;
+HSS warns). hpFactor for plastics is an engineering estimate (flagged).
+SOURCES
+- https://harveyperformance.widen.net/content/hnlndl2mif/pdf/SF_852000.pdf
+- https://www.readyplastics.com/resources/materials/<slug>/machining
+- https://www.curbellplastics.com/services-capabilities/fabrication-machined-parts/plastic-machining-guidelines/
+
+================================================================================
+13. TURNING (lathe) — /turning, turningData.js, turningEngine.js
+================================================================================
+calculateTurning(input) -> rpm, SFM, feed per rev, depth of cut, MRR, power,
+cutting force, predicted Ra, pass count, G50/G96 words, chuck + workpiece
+checks, boring-bar checks, thread infeed schedule, parting parameters.
+
+Operations: OD rough/finish, facing rough/finish, boring rough/finish, drilling
+(delegates to the verified drilling model), OD/face grooving, parting off, OD/ID
+threading. Wood and fiber composites are excluded (no published insert-turning
+data).
+
+13.1 Speed / feed windows. Coated-carbide catalogue windows by material class
+(rough and finish SFM and IPR) from https://metronq.com/en/cutting-parameters-calculator,
+cross-checked with Sandvik Coromant and MechCodex turning tables. A material not
+published individually (e.g. 17-4PH vs 304) is scaled by the ratio of its own
+end-mill SFM midpoint to the reference material's (clamped 0.6-1.3). Plastics have
+per-material windows (Ready Plastics, Curbell); materials with no published
+window are flagged as estimates.
+13.2 Grade multipliers vs coated carbide: uncoated 0.72 on steels; cermet 1.14
+on FINISH passes (MMS test, PVD cermet 1050 vs CVD carbide 918 SFM); ceramic
+x4 in cast iron / superalloys; PCD x2.2 in aluminum; HSS uses absolute SFM rows
+and is not offered for titanium / superalloys. Items without a published source
+are flagged as estimates in the UI.
+13.3 Feed. Rough: window value limited by the Sandvik max-feed-vs-nose-radius
+table (RE 1/64 -> 0.009-0.014 IPR ... 3/32 -> 0.039-0.071). Finish: Ra =
+f^2 / (32 r) with a 1.5x real-world allowance, so f = sqrt(32 r Ra / 1.5).
+13.4 Depth of cut. ap_max = (2/3) x edge length x sin(kappa); edge length = IC x
+shape factor (C 1.015, D 1.221, V 1.743, T 1.732, S 1.0, W 0.685); round inserts
+0.25 x IC; also limited by the HP budget (HP = hpFactor x 12 x SFM x f x ap).
+ap should be >= 2/3 of the nose radius (Sandvik); finish allowance 0.010-0.020"
+per side; stainless / Ti / superalloy: finish depth >= 0.010" and feed >= 0.003 IPR
+to cut beneath the work-hardened skin (BSSA).
+13.5 Threading. Depth 0.61343 P external / 0.54127 P internal; feed = pitch;
+constant RPM (G97); SFM 0.5x turning (0.45x internal). Infeed schedule =
+Sandvik constant-chip-area: cumulative depth a(x) = H sqrt(phi_x / phi_N) with
+phi = 0.3, 1, then x-1; pass-count heuristic ~2 + 2.67 x pitch(mm) (3-16,
+flagged); last pass should not be under 0.002". Z feed (RPM x pitch) is checked
+against the lathe's max IPM.
+13.6 Parting / grooving. Blade width by diameter (Sandvik: <=0.4" 1.0 mm,
+<=1.0" 1.5, <=1.6" 2.0, <=2.0" 2.5, <=2.6" 3.0). Max feed ~ 0.031 x width + 0.001
+IPR (CTE), reduced 75% over the last 0.08" radius, stop 0.02" before centre,
+centre height +/- 0.004". Parting 0.5x and grooving 0.7x turning SFM (estimate
+from the Ready Plastics per-operation table).
+13.7 Workholding. Stickout:diameter <= 3:1 chuck only; 3-6:1 tailstock; >6:1
+steady/follow rest (10:1 absolute with a tailstock). Workpiece deflection:
+cantilever F L^3 / 3EI (chuck only) or 7 F L^3 / 768 EI (chuck + tailstock /
+steady, fixed-pinned) with handbook E (plastics 0.06-1.2 Msi). Chuck grip (Rohm):
+F_spz = (F_s x S_z / mu) x (d_z / d_sp), S_z = 2.0 (L/D<=3) or 2.4 (3-6) new
+chucks, 4.0 / 4.8 older; reduced with a tailstock. Chuck speed is capped by the
+data-plate max RPM; grip force drops with RPM (centrifugal), so verify against
+the chuck maker's speed chart. G96 CSS requires a G50 (G92) RPM clamp.
+13.8 Boring bars. Max overhang (x bar diameter), Sandvik: steel 4 / carbide 6 /
+damped steel 7 / carbide-reinforced damped 14 (grooving & threading 3 / 5 / 5 /
+7). Feed cut 20% when overhang > 3 x diameter; cantilever deflection estimate
+with bar modulus (steel 30 Msi, carbide 87 Msi).
+SOURCES
+- https://metronq.com/en/cutting-parameters-calculator
+- https://mechcodex.com/reference/turning-speeds-feeds
+- Sandvik turning guide https://coromantstrgprod.blob.core.windows.net/files/sitecollectiondocuments%2Fdownloads%2Fglobal%2Ftechnical%20guides%2Fen-gb%2Fc-1020-18.pdf
+- Sandvik threading https://cdn.sandvik.coromant.com/files/sitecollectiondocuments/downloads/global/technical%20guides/en-gb/c-2920-031.pdf
+- Sandvik parting off https://www.sandvik.coromant.com/en-gb/knowledge/parting-and-grooving/parting-off
+- Sandvik tool set-up https://www.sandvik.coromant.com/en-us/knowledge/general-turning/tool-set-up
+- CTE parting https://www.ctemag.com/sites/www.ctemag.com/files/archive_pdf/0102-partingknowhow.pdf
+- Rohm clamping https://www.roehm.biz/fileadmin/products/media/en/DC0000221.PDF
+- MMS cermet https://www.mmsonline.com/articles/whats-the-best-insert-for-finishing-steel
+- Durrie PCD https://durrie.com/wp-content/uploads/2022/08/Catalog_ACT.pdf
+- Curbell turning https://www.curbellplastics.com/services-capabilities/fabrication-machined-parts/plastic-machining-guidelines/plastic-turning-machining-guidelines/
 `;
 
 export default referenceText;

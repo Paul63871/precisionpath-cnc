@@ -10,8 +10,10 @@ const OP_GROUPS = [
   { category: "Multi-Axis", label: "Multi-Axis & Special" },
 ];
 
-const opOptions = OP_GROUPS.flatMap((g) =>
-  OPERATIONS.filter((o) => o.category === g.category).map((o) => ({
+// Legacy operations (e.g. the old full-width "bore") stay resolvable for saved
+// calculations but are hidden from the picker unless currently selected.
+const buildOpOptions = (currentId) => OP_GROUPS.flatMap((g) =>
+  OPERATIONS.filter((o) => o.category === g.category && (!o.legacy || o.id === currentId)).map((o) => ({
     value: o.id,
     label: o.name,
     group: g.label,
@@ -19,6 +21,7 @@ const opOptions = OP_GROUPS.flatMap((g) =>
 );
 
 export default function MaterialForm({ materials, materialId, operationId, onChange }) {
+  const opOptions = React.useMemo(() => buildOpOptions(operationId), [operationId]);
   return (
     <div className="space-y-4">
       <div className="space-y-1.5">

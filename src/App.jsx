@@ -17,6 +17,7 @@ import Settings from './pages/Settings';
 import Reference from './pages/Reference';
 import MachineSetupAssistant from './pages/MachineSetupAssistant';
 import SpeedsFeedsAssistant from './pages/SpeedsFeedsAssistant';
+import Turning from './pages/Turning';
 import Layout from './components/Layout';
 
 // Sync the app theme with the OS dark-mode preference (prefers-color-scheme).
@@ -45,6 +46,7 @@ const AnimatedRoutes = () => {
           {/* Add your page Route elements here */}
           <Route element={<Layout />}>
             <Route path="/" element={<Calculator />} />
+            <Route path="/turning" element={<Turning />} />
             <Route path="/saved-calculations" element={<SavedCalculations />} />
             <Route path="/materials" element={<Materials />} />
             <Route path="/machine-profiles" element={<MachineProfiles />} />
