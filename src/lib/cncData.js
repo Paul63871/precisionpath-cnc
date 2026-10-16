@@ -383,6 +383,24 @@ export const TOOL_TYPES = [
   { id: "end_mill", name: "Square End Mill", sfmMult: 1.0, chipMult: 1.0, docMult: 1.0, isDrill: false, countField: "flutes", fields: ["flutes", "loc"] },
   { id: "ball_end", name: "Ball End Mill", sfmMult: 1.0, chipMult: 0.9, docMult: 0.85, isDrill: false, countField: "flutes", fields: ["flutes", "loc"] },
   { id: "bull_nose", name: "Bull-Nose End Mill", sfmMult: 1.0, chipMult: 1.0, docMult: 1.0, isDrill: false, countField: "flutes", fields: ["flutes", "loc", "cornerRadius"] },
+  // --- RADIUS CUTTERS -----------------------------------------------------
+  // radiusKind marks tools whose cutting profile is (partly) a radius, so the
+  // engine uses an EFFECTIVE cutter diameter for speed and chip load.
+  //   corner_round / concave: Harvey Tool corner-rounding and concave-radius
+  //     end-mill speeds & feeds (effective diameter, chip-load adjustments for
+  //     one/both-side engagement, multi-pass schedule):
+  //     https://harveyperformance.widen.net/content/57m86cyknv/pdf/SF_712500.pdf
+  //     https://harveyperformance.widen.net/content/pba67otskw/pdf/SF_32800.pdf
+  //   round_insert (button / copy-mill / radius cutter): effective diameter and
+  //     axial chip thinning per Mentor CNC / Sandvik round-insert formulas.
+  //     https://www.mentorcnc.com/en/cnc-milling-cutting-tools-guide/
+  // chipMult 0.67 calibrates our end-mill chip-load curve to Harvey's radius-
+  // cutter tables at the effective diameter (steel 0.39-0.67, aluminum ~0.68 of
+  // the end-mill value) — full-profile contact is a heavier cut than a flat
+  // end mill at the same chip load.
+  { id: "corner_round", name: "Corner Rounding Radius Cutter", sfmMult: 1.0, chipMult: 0.67, docMult: 1.0, isDrill: false, countField: "flutes", radiusKind: "corner_round", fields: ["flutes", "loc", "cornerRadius", "radiusEngagement"] },
+  { id: "concave_radius", name: "Concave Radius Cutter", sfmMult: 1.0, chipMult: 0.67, docMult: 1.0, isDrill: false, countField: "flutes", radiusKind: "concave", fields: ["flutes", "loc", "cornerRadius", "radiusEngagement"] },
+  { id: "round_insert", name: "Round-Insert Radius Cutter", sfmMult: 1.0, chipMult: 1.0, docMult: 0.5, isDrill: false, countField: "inserts", radiusKind: "round_insert", fields: ["inserts", "loc", "insertIc"] },
   { id: "roughing", name: "Roughing / Corn Cob", sfmMult: 1.1, chipMult: 1.2, docMult: 1.3, isDrill: false, countField: "flutes", fields: ["flutes", "loc"] },
   { id: "chamfer", name: "Chamfer / V-Bit", sfmMult: 1.0, chipMult: 0.8, docMult: 0.6, isDrill: false, countField: "flutes", fields: ["flutes", "loc", "includedAngle", "tipDiameter"] },
   { id: "face_mill", name: "Face Mill (Indexable)", sfmMult: 1.0, chipMult: 1.1, docMult: 0.5, isDrill: false, countField: "inserts", fields: ["inserts", "loc", "leadAngle"] },
@@ -392,12 +410,63 @@ export const TOOL_TYPES = [
   { id: "t_slot", name: "T-Slot Cutter", sfmMult: 0.95, chipMult: 0.9, docMult: 1.0, isDrill: false, countField: "flutes", fields: ["flutes", "neckDiameter"] },
 ];
 
+// How the radius cutter is engaged — scales the chip load per Harvey Tool's
+// footnotes on the corner-rounding and concave-radius speeds & feeds charts.
+export const RADIUS_ENGAGEMENTS = {
+  corner_round: [
+    { id: "one_side", name: "Rounding one side of a slot/edge", mult: 1.0 },
+    { id: "both_sides", name: "Rounding both sides at once", mult: 0.7 }, // Harvey: reduce chip load to 60-80%
+    { id: "plunge", name: "Plunging into a hole", mult: 0.45 },           // Harvey: reduce to 40-50%
+  ],
+  concave: [
+    { id: "od_radius_one", name: "OD + radius engaged, one side", mult: 1.0 },
+    { id: "od_radius_both", name: "OD + radius engaged, both sides", mult: 0.6 }, // Harvey: reduce 40%
+    { id: "radius_one", name: "Radius only, one side", mult: 1.2 },               // Harvey: increase 20%
+    { id: "radius_both", name: "Radius only, both sides", mult: 0.75 },           // Harvey: reduce 25%
+  ],
+};
+
+// Absolute starting SFM for corner-rounding / concave-radius cutters by
+// material class (Harvey Tool charts SF_712500 / SF_32800: wrought aluminum
+// 1000, brass 500, free-machining & low-carbon steel 200, 300-series
+// stainless 200, titanium 150 (corner rounding) / lower on the concave chart,
+// nickel alloys 70 / lower). Cast iron is not charted (steel value, ESTIMATE);
+// titanium 120 and superalloy 60 are the conservative blend of the two charts.
+// Classes not listed (plastic, wood, composite, phenolic) are not charted by
+// Harvey for these cutters — the engine falls back to 0.7x the end-mill speed
+// (ESTIMATE, wide full-profile contact).
+export const RADIUS_CUTTER_SFM = {
+  aluminum: 1000, nonferrous_soft: 500, steel_mild: 200, steel_alloy: 200,
+  stainless: 200, cast_iron: 200, titanium: 120, superalloy: 60,
+};
+// Harvey axial/radial pass schedule (fractions of the radius R per pass).
+export const RADIUS_PASS_SCHEDULE = {
+  1: [1], 2: [0.7, 0.3], 3: [0.4, 0.4, 0.2], 4: [0.4, 0.3, 0.2, 0.1],
+};
+export function radiusPassCount(kind, cls) {
+  const soft = ["aluminum", "nonferrous_soft", "plastic", "wood", "composite", "phenolic"];
+  const hard = ["stainless", "titanium", "superalloy"];
+  if (soft.includes(cls)) return kind === "concave" ? 2 : 1;
+  if (hard.includes(cls)) return kind === "concave" ? 3 : 4;
+  return 3;
+}
+// Median midpoint SFM of a material class — reference for scaling the class
+// SFM to a harder/softer grade inside the same class.
+const _classMidCache = {};
+export function classRefMid(cls) {
+  if (_classMidCache[cls]) return _classMidCache[cls];
+  const mids = PART_MATERIALS.filter((m) => m.materialClass === cls && m.sfmRange).map((m) => (m.sfmRange[0] + m.sfmRange[1]) / 2).sort((a, b) => a - b);
+  return (_classMidCache[cls] = mids.length ? mids[Math.floor(mids.length / 2)] : 1);
+}
+
 // Descriptors for the type-specific tool inputs rendered in the form.
 export const FIELD_DEFS = {
   flutes: { label: "Flutes", kind: "int", min: 1, max: 12, step: 1 },
   inserts: { label: "Inserts", kind: "int", min: 1, max: 24, step: 1 },
   loc: { label: "LOC", kind: "length", step: 0.01 },
   cornerRadius: { label: "Corner Radius", kind: "length", step: 0.001 },
+  insertIc: { label: "Insert Ø (IC)", kind: "length", step: 0.001 },
+  radiusEngagement: { label: "Radius Engagement", kind: "radiusEngagement" },
   includedAngle: { label: "Included Angle", kind: "angle", step: 1 },
   tipDiameter: { label: "Tip Diameter", kind: "length", step: 0.001 },
   leadAngle: { label: "Lead Angle", kind: "angle", step: 1 },

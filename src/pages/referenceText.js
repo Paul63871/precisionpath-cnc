@@ -323,6 +323,9 @@ diamond  | Diamond (PCD)                     | 1.15
 end_mill    | Square End Mill      | 1.0 | 1.0 | 1.0 | false | flutes  | flutes, loc
 ball_end    | Ball End Mill        | 1.0 | 0.9 | 0.85| false | flutes  | flutes, loc
 bull_nose   | Bull-Nose End Mill   | 1.0 | 1.0 | 1.0 | false | flutes  | flutes, loc, cornerRadius
+corner_round| Corner Rounding Radius Cutter | 1.0 | 0.67 | 1.0 | false | flutes | flutes, loc, cornerRadius, radiusEngagement
+concave_radius| Concave Radius Cutter | 1.0 | 0.67 | 1.0 | false | flutes | flutes, loc, cornerRadius, radiusEngagement
+round_insert| Round-Insert Radius Cutter | 1.0 | 1.0 | 0.5 | false | inserts | inserts, loc, insertIc
 roughing    | Roughing / Corn Cob  | 1.1 | 1.2 | 1.3 | false | flutes  | flutes, loc
 chamfer     | Chamfer / V-Bit      | 1.0 | 0.8 | 0.6 | false | flutes  | flutes, loc, includedAngle, tipDiameter
 face_mill   | Face Mill (Indexable)| 1.0 | 1.1 | 0.5 | false | inserts | inserts, loc, leadAngle
@@ -779,6 +782,51 @@ SOURCES
 BUG FIX (found while adding phenolics): the engine ignored chipCurve "plastic"
 (only "soft" was honoured), so all 16 plastics were using the metal chip-load
 curve (~3-4x too light). Now fixed; plastic chip loads match the Harvey chart.
+
+================================================================================
+15. RADIUS CUTTERS (corner rounding / concave radius / round insert / bull nose)
+================================================================================
+Tool types corner_round, concave_radius and round_insert are new; bull_nose now
+also uses its radius. All four reference speed and chip load to an EFFECTIVE
+cutting diameter instead of the nominal one (engine result: effectiveDiameter,
+radiusCutter{kind, radius, pilotDiameter, passes, passSchedule, axialThinning}).
+- Corner rounding (Harvey Tool SF_712500): pilot = D - 2R; De = pilot + R when
+  R/pilot < 2.5, else pilot + 0.7R. Chip load x1.0 rounding one side, x0.7 both
+  sides (Harvey: 60-80%), x0.45 plunging into a hole (Harvey: 40-50%).
+- Concave radius (Harvey SF_32800): De = D - 2R. Chip load x1.0 OD + radius one
+  side, x0.6 both sides (-40%), x1.2 radius only one side (+20%), x0.75 radius
+  only both sides (-25%).
+- Both: absolute starting SFM from the Harvey charts by class (RADIUS_CUTTER_SFM:
+  aluminum 1000, brass 500, steel 200, 300-series stainless 200, titanium 120,
+  nickel alloys 60 - titanium/nickel blend the two charts, cast iron uses the
+  steel value: ESTIMATES), scaled for the grade inside its class and +-15% with
+  aggressiveness; no coating speed multiplier (the charts give one SFM), coated
+  chip load +15% (Harvey: +10-20%). Plastics/wood/composites/phenolics are not
+  charted: end-mill speed x 0.7 (ESTIMATE). Chip load = end-mill curve at De x
+  0.67 (calibrated to the Harvey tables: steel 0.0016-0.0021 in/tooth at
+  0.375-0.5 in De; aluminum ~0.0026 at 0.375 in), and a further x0.6 for concave
+  cutters in ferrous/hard alloys (Harvey runs them at ~0.35-0.4x aluminum).
+- Pass schedule (Harvey): radial stepover = the full radius R, axial passes as
+  fractions of R: 1 pass 1.0R; 2 passes 0.7/0.3; 3 passes 0.4/0.4/0.2; 4 passes
+  0.4/0.3/0.2/0.1. Pass count by class: corner rounding 1 (aluminum/soft),
+  3 (steel/iron), 4 (stainless/titanium/nickel); concave 2 / 3 / 3. First pass
+  is reported as axial DOC; the HP-solved stepover and radial chip thinning are
+  NOT applied (fixed-profile cut).
+- Round-insert radius cutter (Mentor CNC / Sandvik): for ap < iC/2,
+  De = D - iC + sqrt(iC^2 - (iC - 2 ap)^2) and the feed is raised by the axial
+  chip-thinning factor 1/sqrt(1 - (1 - 2 ap/iC)^2) (capped at 3x). Needs the
+  insert diameter (IC).
+- Bull nose (cnc57 / Mentor): for ap < r, De = (D - 2r) + 2 sqrt(ap (2r - ap)) and
+  the feed rises by 1/sin(kappa), sqrt(1 - (1 - ap/r)^2), capped at 2x. At or
+  above the corner radius De = D and nothing changes (regression-neutral).
+- Geometry errors: R >= D/2 is rejected for corner rounding / concave; IC >= D
+  for round inserts.
+SOURCES
+- https://harveyperformance.widen.net/content/57m86cyknv/pdf/SF_712500.pdf
+- https://harveyperformance.widen.net/content/pba67otskw/pdf/SF_32800.pdf
+- https://www.mentorcnc.com/en/cnc-milling-cutting-tools-guide/
+- https://cnc57.com/en/technical_information/Effective-Diameter-and-Ball-Nose-Speed
+- https://web.mae.ufl.edu/designlab/Advanced%20Manufacturing/Helical_Machining_Guidebook.pdf
 `;
 
 export default referenceText;

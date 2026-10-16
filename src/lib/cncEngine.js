@@ -3,6 +3,7 @@ import {
   TOOL_TYPES, OPERATIONS, WOC_CLASS_TARGETS, PERIPHERAL_ROUGH_WOC_TARGETS,
   TAP_SFM_BY_CLASS, TAP_TOOL_MATERIAL_MULT, TAP_STYLES, HOLE_TYPES, THREAD_TABLE,
   WORKHOLDING_JAW_TYPES, tapDrillSize, baseChipLoad, lerp, clamp,
+  RADIUS_ENGAGEMENTS, RADIUS_CUTTER_SFM, RADIUS_PASS_SCHEDULE, radiusPassCount, classRefMid,
 } from "./cncData";
 
 // input shape:
@@ -25,7 +26,7 @@ export function calculate(input) {
     leadAngle, cornerRadius, includedAngle, tipDiameter, thickness, neckDiameter, pointAngle,
     radialLoad, axialDoc, featureDepth, threadId, tapStyle, holeType, gripDepth,
     jawTypeId, clampForce,
-    priority, featureDiameter, pilotDiameter, targetRa,
+    priority, featureDiameter, pilotDiameter, targetRa, radiusEngagement, insertIc,
   } = input;
 
   const mat = material || PART_MATERIALS.find((m) => m.id === materialId) || PART_MATERIALS[0];
@@ -517,7 +518,71 @@ export function calculate(input) {
   //   De = D                          for ap > D/2 (full hemisphere engaged)
   // RPM uses De in place of D; feed-per-tooth scales by D/De to hold chip
   // thickness (both applied below, after De is known).
-  let effectiveDiameter = diameter;
+  // --- Radius cutters (corner rounding / concave radius / round insert / bull nose) ---
+  // Their cutting diameter varies along the profile, so SFM and chip load are
+  // referenced to an EFFECTIVE diameter, not the nominal one:
+  //   corner rounding (Harvey SF_712500): pilot = D - 2R;
+  //     De = pilot + R when R/pilot < 2.5, else pilot + 0.7R
+  //   concave radius (Harvey SF_32800): De = D - 2R
+  //   round insert (Mentor CNC / Sandvik): De = D - iC + sqrt(iC^2 - (iC - 2ap)^2)
+  //     for ap < iC/2, plus axial chip thinning sqrt(1 - (1 - 2ap/iC)^2)
+  //   bull nose (cnc57 / Mentor): De = (D - 2r) + 2 sqrt(ap (2r - ap)) for ap < r,
+  //     same axial chip-thinning term with iC = 2r
+  // https://harveyperformance.widen.net/content/57m86cyknv/pdf/SF_712500.pdf
+  // https://harveyperformance.widen.net/content/pba67otskw/pdf/SF_32800.pdf
+  // https://www.mentorcnc.com/en/cnc-milling-cutting-tools-guide/
+  // https://cnc57.com/en/technical_information/Effective-Diameter-and-Ball-Nose-Speed
+  const radiusKind = tt.radiusKind || null;
+  const formKind = (radiusKind === "corner_round" || radiusKind === "concave") ? radiusKind : null;
+  const radiusNotes = [];
+  let radiusInfo = null;
+  let axialThinning = 1;
+  let radiusEngMult = 1;
+  let formEffD = null;
+  if (formKind) {
+    const R = cornerRadius > 0 ? cornerRadius : diameter * 0.1;
+    const pilot = formKind === "corner_round" ? diameter - 2 * R : diameter - 2 * R;
+    if (!(cornerRadius > 0)) radiusNotes.push(`No radius entered — assuming ${R.toFixed(3)}" (10% of diameter). Enter the actual cutter radius.`);
+    if (pilot <= 0.0005) {
+      return { error: formKind === "corner_round" ? `Corner radius (${R}") must be smaller than half the cutter diameter (${(diameter / 2).toFixed(3)}").` : `Radius (${R}") must be smaller than half the cutter diameter (${(diameter / 2).toFixed(3)}") so the cutter has a core diameter.`, warnings: [] };
+    }
+    formEffD = formKind === "corner_round"
+      ? (R / pilot < 2.5 ? pilot + R : pilot + 0.7 * R)
+      : pilot;
+    const engList = RADIUS_ENGAGEMENTS[formKind];
+    const eng = engList.find((e) => e.id === radiusEngagement) || engList[0];
+    radiusEngMult = eng.mult;
+    const nPass = radiusPassCount(formKind, mat.materialClass);
+    const sched = RADIUS_PASS_SCHEDULE[nPass];
+    if (!userPinnedWoc) woc = R;
+    hemWocBounds = null; // form tools cut a fixed profile — no HP-driven stepover solve
+    if (!(axialDoc && axialDoc > 0)) doc = R * sched[0];
+    radiusInfo = { kind: formKind, radius: R, pilotDiameter: pilot, effectiveDiameter: formEffD, engagement: eng.name, engagementMult: eng.mult, passes: nPass, passSchedule: sched.map((f) => Number((f * R).toFixed(4))) };
+    radiusNotes.push(`Radius cutter: speed and chip load are referenced to the EFFECTIVE diameter ${formEffD.toFixed(3)}" (nominal ${diameter}"), per Harvey Tool's ${formKind === "corner_round" ? "corner-rounding" : "concave-radius"} chart. Engagement "${eng.name}" scales chip load ×${eng.mult}.`);
+    radiusNotes.push(`Cut the radius in ${nPass} descending pass${nPass > 1 ? "es" : ""} (${sched.map((f) => (f * R).toFixed(3) + '"').join(", ")} of the ${R.toFixed(3)}" radius per pass, Harvey schedule); the first pass is shown as axial DOC. Climb mill, and finish with a light spring pass for a clean radius.`);
+    if (formKind === "corner_round") radiusNotes.push("Corner-rounding cutters are side-cutting only: round the edge from the side or in an existing slot; do not plunge into solid. Plunging into a hole needs the chip load cut to 40–50% (choose that engagement).");
+    if (R / pilot >= 2.5) radiusNotes.push("Radius/pilot ratio ≥ 2.5: effective diameter uses 0.7×R (Harvey).");
+  } else if (radiusKind === "round_insert") {
+    const iC = insertIc > 0 ? insertIc : diameter * 0.5;
+    if (!(insertIc > 0)) radiusNotes.push(`No insert diameter entered — assuming IC ${iC.toFixed(3)}" (half the cutter diameter).`);
+    if (iC >= diameter) return { error: `Insert diameter (${iC}") must be smaller than the cutter diameter (${diameter}").`, warnings: [] };
+    const apR = Math.min(doc, iC / 2);
+    const De = diameter - iC + Math.sqrt(Math.max(0, iC * iC - Math.pow(iC - 2 * apR, 2)));
+    formEffD = Math.max(De, diameter * 0.2);
+    if (doc < iC / 2) axialThinning = Math.min(3, 1 / Math.max(0.2, Math.sqrt(Math.max(0, 1 - Math.pow(1 - 2 * doc / iC, 2)))));
+    radiusInfo = { kind: "round_insert", insertIc: iC, effectiveDiameter: formEffD, axialThinning };
+    if (axialThinning > 1.01) radiusNotes.push(`Round insert at ${doc.toFixed(3)}" depth (< IC/2 = ${(iC / 2).toFixed(3)}"): effective diameter ${formEffD.toFixed(3)}" and axial chip thinning raise the feed ×${axialThinning.toFixed(2)} to hold chip thickness (Mentor CNC / Sandvik). Below ~25% of IC the thinning is heavy — consider a deeper cut or smaller IC.`);
+    if (doc > iC / 2) radiusNotes.push("Depth exceeds IC/2: the insert is cutting on its full width, chip thickness equals feed per tooth; keep depth ≤ ~0.25×IC for roughing to protect the insert (Sandvik round-insert guidance, ESTIMATE).");
+  } else if (tt.id === "bull_nose" && cornerRadius > 0 && cornerRadius < diameter / 2 && doc > 0 && doc < cornerRadius) {
+    const r = cornerRadius;
+    const De = (diameter - 2 * r) + 2 * Math.sqrt(Math.max(0, doc * (2 * r - doc)));
+    formEffD = Math.max(De, diameter * 0.2);
+    axialThinning = Math.min(2, 1 / Math.max(0.3, Math.sqrt(Math.max(0, 1 - Math.pow(1 - doc / r, 2)))));
+    radiusInfo = { kind: "bull_nose", cornerRadius: r, effectiveDiameter: formEffD, axialThinning };
+    radiusNotes.push(`Bull-nose at ${doc.toFixed(3)}" axial depth (< corner radius ${r}"): effective cutting diameter is ${formEffD.toFixed(3)}" — RPM is computed from it, and the feed is raised ×${axialThinning.toFixed(2)} to hold chip thickness (axial chip thinning, capped at 2×).`);
+  }
+
+  let effectiveDiameter = formEffD || diameter;
   if (tt.id === "ball_end" && doc > 0 && doc < diameter) {
     const ap = Math.min(doc, diameter / 2);
     effectiveDiameter = 2 * Math.sqrt(ap * (diameter - ap));
@@ -544,6 +609,19 @@ export function calculate(input) {
     const useDrillRange = !!(mat.drillSfmRange && (op.docMode === "drill" || tt.isDrill));
     const [sfmMin, sfmMax] = useDrillRange ? mat.drillSfmRange : mat.sfmRange;
     sfm = lerp(sfmMin, sfmMax, agg) * toolMatMult * coatSfmMult * (useDrillRange ? 1 : op.sfmMult) * tt.sfmMult;
+    if (formKind) {
+      // Harvey's radius-cutter charts publish ABSOLUTE speeds (same for coated and
+      // uncoated), so replace the end-mill range lerp: class SFM scaled to the
+      // grade inside its class, +-15% with aggressiveness.
+      const hs = RADIUS_CUTTER_SFM[mat.materialClass];
+      if (hs) {
+        const mid = (mat.sfmRange[0] + mat.sfmRange[1]) / 2;
+        const gradeScale = clamp(mid / classRefMid(mat.materialClass), 0.6, 1.3);
+        sfm = hs * gradeScale * lerp(0.85, 1.15, agg) * toolMatMult * op.sfmMult;
+      } else {
+        sfm *= 0.7; // ESTIMATE: wide full-profile contact in plastics/wood/composites
+      }
+    }
   }
   // Standard 20% slotting speed derate (Kennametal, CGS Tool) — full-width
   // engagement generates more heat per flute pass than partial-width milling.
@@ -585,8 +663,18 @@ export function calculate(input) {
     // window (phenolics: Ready Plastics 0.004-0.008 IPR) override the milling-
     // derived chipLoadFactor when drilling.
     const matChipFactor = (isDrillOp && mat.drillChipLoadFactor) ? mat.drillChipLoadFactor : mat.chipLoadFactor;
-    chipLoad = baseChipLoad(diameter, chipCurve) * matChipFactor * op.chipMult * tt.chipMult;
+    chipLoad = baseChipLoad(formKind ? formEffD : diameter, chipCurve) * matChipFactor * op.chipMult * tt.chipMult;
     chipLoad *= lerp(0.75, 1.05, aggQ);
+    if (formKind) {
+      chipLoad *= radiusEngMult;
+      // Harvey's concave-radius chart runs ferrous/hard-alloy chip loads at only
+      // ~0.35-0.4x its aluminum values (vs ~0.6x for a flat end mill), so trim the
+      // metal-curve chip load a further 0.6x there (steel at 0.375" effective:
+      // Harvey 0.00093 in/tooth).
+      if (formKind === "concave" && ["steel_mild", "steel_alloy", "stainless", "cast_iron", "titanium", "superalloy"].includes(mat.materialClass)) chipLoad *= 0.6;
+      if (coat.id !== "none") chipLoad *= 1.15; // Harvey: chip loads are for uncoated cutters, +10-20% if coated
+    }
+    chipLoad *= axialThinning;
   }
   // Ball nose feed-per-tooth compensation: at reduced effective diameter the
   // edge sweeps a shorter arc per revolution, so the programmed chip load
@@ -687,7 +775,7 @@ export function calculate(input) {
   // RCTF: 1 / sqrt(1 - (1 - 2*Ae/D)^2). (The simplified 1/sqrt(Ae/D) over-states
   // the factor by ~2x and is incorrect — it does not match manufacturer output.)
   let radialThinningFactor = 1;
-  if (op.adaptive && woc > 0 && woc < diameter * 0.5) {
+  if (op.adaptive && !formKind && woc > 0 && woc < diameter * 0.5) {
     const ratio = Math.min(0.5, woc / diameter);
     radialThinningFactor = 1 / Math.sqrt(1 - Math.pow(1 - 2 * ratio, 2));
     feedMult *= radialThinningFactor;
@@ -945,6 +1033,7 @@ export function calculate(input) {
   if (feedMarkCapped) warnings.push(`Finish quality: feed per tooth was reduced so the theoretical feed-mark cusp (fz²/4D) stays within the ${Math.round(raTargetIn * 1e6)} µin Ra target.`);
   if (sfmCapped) warnings.push(`SFM capped at ${Math.round(sfmHardCap)} (105% of ${mat.name}'s published range) — the stacked aggressiveness/operation/coating multipliers wanted a higher speed than this material and coating can realistically sustain.`);
   if (tt.id === "ball_end" && effectiveDiameter < diameter * 0.999) warnings.push(`Ball nose effective cutting diameter is ${effectiveDiameter.toFixed(3)}" at ${doc.toFixed(3)}" axial DOC (nominal diameter ${diameter}") — RPM and chip load are computed from this smaller effective diameter, not the nominal one, per standard ball-nose speed/feed correction.`);
+  for (const n of radiusNotes) warnings.push(n);
   if (hpSolveNote) warnings.push(hpSolveNote);
   if (hpGovernorNote) warnings.push(hpGovernorNote);
   if (hpRequired > hpAtCutter) warnings.push(`Requires ~${hpRequired.toFixed(1)} HP but the machine has ${hpAtCutter} HP — reduce DOC/WOC or feed.`);
@@ -995,6 +1084,7 @@ export function calculate(input) {
     radialEngagementPct: diameter > 0 ? Math.round((woc / diameter) * 100) : 0,
     adaptive: !!op.adaptive,
     effectiveDiameter: Number(effectiveDiameter.toFixed(3)),
+    radiusCutter: radiusInfo,
     ballFeedCompensation: Number(ballFeedCompensation.toFixed(3)),
     sfmCapped,
     overhang,

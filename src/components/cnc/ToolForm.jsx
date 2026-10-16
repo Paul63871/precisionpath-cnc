@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Label } from "@/components/ui/label";
 import ResponsiveSelect from "@/components/cnc/ResponsiveSelect";
-import { TOOL_TYPES, TOOL_MATERIALS, COATINGS, FIELD_DEFS, THREAD_TABLE, TAP_STYLES, HOLE_TYPES } from "@/lib/cncData";
+import { TOOL_TYPES, TOOL_MATERIALS, COATINGS, FIELD_DEFS, THREAD_TABLE, TAP_STYLES, HOLE_TYPES, RADIUS_ENGAGEMENTS } from "@/lib/cncData";
 import { UNITS, lenFromImp, lenToImp } from "@/lib/units";
 import NumberField from "@/components/NumberField";
 import TapDrillDialog from "@/components/cnc/TapDrillDialog";
@@ -75,6 +75,21 @@ export default function ToolForm({ value, onChange, units = "imperial" }) {
               onChange({ ...value, holeType: v, tapStyle: stillFits ? value.tapStyle : suggested });
             }}
             options={HOLE_TYPES.map((h) => ({ value: h.id, label: h.name }))}
+          />
+        </div>
+      );
+    }
+    if (def.kind === "radiusEngagement") {
+      const list = RADIUS_ENGAGEMENTS[toolType.radiusKind] || [];
+      if (!list.length) return null;
+      const cur = list.find((e) => e.id === value.radiusEngagement) || list[0];
+      return (
+        <div key={key} className="space-y-1.5 col-span-3">
+          <Label className="text-xs text-muted-foreground">{def.label}</Label>
+          <ResponsiveSelect
+            value={cur.id}
+            onValueChange={(v) => set("radiusEngagement", v)}
+            options={list.map((e) => ({ value: e.id, label: e.name }))}
           />
         </div>
       );
