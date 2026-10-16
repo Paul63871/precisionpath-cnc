@@ -285,6 +285,11 @@ peek        | PEEK (unfilled)               | Plastic | 500-900 | 0.6 | 0.2 | 0.
 peek_gf30   | PEEK 30% Glass / Carbon-Filled| Plastic | 350-650 | 0.4 | 0.28 | 0.4 | 0.8 | ABRASIVE | hp est.
 pei_ultem   | Ultem PEI (1000, unfilled)    | Plastic | 700-1000 | 0.35 | 0.2 | 0.4 | 0.5 | hp est.
 pet_ertalyte| PET-P (Ertalyte)              | Plastic | 250-450 | 0.45 | 0.15 | 0.5 | 1 | hp est.
+phenolic_xx | Paper Phenolic XX (Bakelite)   | Phenolic | 400-1300 | 0.45 | 0.15 | 0.5 | 1.5 | drill 300-500 SFM | hp est.
+phenolic_ce | Cotton Phenolic CE (Textolite / Micarta) | Phenolic | 400-1200 | 0.45 | 0.17 | 0.5 | 1.5 | drill 300-500 SFM | hp est.
+phenolic_le | Linen Phenolic LE (fine weave, Micarta) | Phenolic | 400-1150 | 0.40 | 0.17 | 0.5 | 1.2 | drill 300-500 SFM | hp est.
+phenolic_canvas | Canvas Phenolic C (Textolite / Micarta) | Phenolic | 350-1050 | 0.40 | 0.20 | 0.4 | 1.0 | drill 250-450 SFM | hp est.
+phenolic_glass | Glass Phenolic G-3 / GP-01 | Phenolic (class composite) | 300-550 est. | 0.6 (metal curve) | 0.25 | 0.9 | 1.5 | ABRASIVE | drill 200-350 SFM | hp est.
 cfrp        | Carbon Fiber (CFRP)      | Composite    | 200-450  | 0.6  | 0.28 | 0.6  | 1.5
 g10         | G10 / FR4                | Composite    | 250-500  | 0.7  | 0.25 | 0.7  | 1.7
 g11         | G11 / FR5                | Composite    | 225-450  | 0.7  | 0.28 | 0.62 | 1.5
@@ -643,7 +648,7 @@ checks, boring-bar checks, thread infeed schedule, parting parameters.
 
 Operations: OD rough/finish, facing rough/finish, boring rough/finish, drilling
 (delegates to the verified drilling model), OD/face grooving, parting off, OD/ID
-threading. Wood and fiber composites are excluded (no published insert-turning
+threading. Wood and fiber composites (except glass phenolic, see section 14) are excluded (no published insert-turning
 data).
 
 13.1 Speed / feed windows. Coated-carbide catalogue windows by material class
@@ -702,6 +707,78 @@ SOURCES
 - MMS cermet https://www.mmsonline.com/articles/whats-the-best-insert-for-finishing-steel
 - Durrie PCD https://durrie.com/wp-content/uploads/2022/08/Catalog_ACT.pdf
 - Curbell turning https://www.curbellplastics.com/services-capabilities/fabrication-machined-parts/plastic-machining-guidelines/plastic-turning-machining-guidelines/
+
+================================================================================
+14. PHENOLICS / TEXTOLITE / MICARTA / BAKELITE
+================================================================================
+Five laminates (table in 4.1): paper XX, cotton CE, linen LE, canvas C, and
+glass-cloth G-3 / GP-01. Textolite (GE), Micarta (Norplex-Micarta) and Bakelite
+are trade names for these NEMA LI-1 laminates, so they are in the material
+names for search.
+CLASS DESIGN. Organic-fibre grades use a NEW materialClass "phenolic" (low
+abrasion, carbide standard, HSS viable at low volume) with entries in
+TOOL_MATERIAL_CLASS_MULT (hss 0.50 / cobalt 0.55 / indexable 1.0 / pcd 1.0 -
+all ESTIMATES), WOC_CLASS_TARGETS (rough 15-25% D, finish 5-8% D = Ready's
+0.015-0.030 in radial finish pass; rough band an ESTIMATE),
+PERIPHERAL_ROUGH_WOC_TARGETS (30-45% D, ESTIMATE) and TAP_SFM_BY_CLASS
+(40-70 SFM, ESTIMATE). Glass phenolic is as abrasive as G10 and uses class
+"composite" with abrasive:true.
+MILLING. Chip load uses the plastic curve (Harvey unfilled plastics) x 0.40-0.45
+-> ~0.0033 in/tooth at 1/4 in and ~0.0056 at 1/2 in, bracketed by Ready routing
+(80-150 IPM at 18-24k RPM, 2 flutes = 0.0017-0.0042 in/tooth) and Titan Tooling's
+phenolic/compact-laminate chart (1/4 in 0.004-0.006, 1/2 in 0.008-0.010). SFM
+range: 300-700 SFM conventional end-mill guidance (Ready paper/linen pages) up
+to the routing-RPM equivalent at a 1/4 in router (XX 20-26k, CE/LE 18-24k,
+canvas 16-22k RPM = ~1050-1300 SFM). The published speeds are for UNCOATED,
+polished C-2 carbide, so the generic 0.72 uncoated derate is not applied to
+phenolics. Axial DOC: Ready routing 0.060-0.200 in per pass (canvas: sheet/2).
+DRILLING. materials carry drillSfmRange (absolute, bypasses the drilling op's 0.8
+derate) and drillChipLoadFactor: 300-500 SFM / 0.004-0.008 IPR (paper, cotton,
+linen), 250-450 / 0.003-0.007 (canvas), 200-350 / 0.003-0.006 (glass phenolic).
+Notes: backing board always (G10/thermoset scrap 0.125 in or MDF, never metal),
+feed -50% over the last 20% of depth, no pecking below 6xD, parabolic carbide
+or HSS (HSS only low volume).
+TAPPING. Cutting tap, 65-70% thread engagement (cotton/canvas fibre galls a
+full-depth thread), forming taps not recommended, light mineral oil brushed on the
+tap only and wiped immediately. The G10 "1.5-2.5xD engagement" rule is NOT used
+for organic-fibre phenolics.
+TURNING (turningData.js PHENOLIC_TURNING; every window is a published Ready
+Plastics figure): SFM rough / finish, IPR rough / finish -
+  XX     400-600 / 600-900,  0.008-0.012 / 0.003-0.007
+  CE     350-550 / 550-750,  0.006-0.010 / 0.003-0.006
+  LE     350-550 / 500-700,  0.005-0.009 / 0.003-0.006
+  Canvas 300-480 / 450-650,  0.004-0.009 / 0.002-0.005
+  Glass  250-380 / 380-550,  0.004-0.008 / 0.002-0.005 (flood, C-2 or PCD)
+Glass phenolic is the only "composite" that is turnable; CFRP/G10/G11 still are
+not. GRADE_MULT.phenolic / .composite (uncoated 1.0; PCD 1.0 ESTIMATE),
+HSS_TURNING.phenolic (0.5x, ESTIMATE; composites: HSS not recommended).
+Geometry: C-2 uncoated carbide, polished chip face, rake +5 to +10 deg, relief
+8-12 deg, sharp edge, no T-land, no chipbreaker. Workpiece modulus: CE 1.5-1.6 Msi
+(Norplex-Micarta NP310E; Plastic-Craft lists 1.1 Msi), XX 1.3 Msi and glass phenolic
+2.5 Msi are ESTIMATES.
+HAZARDS / COOLANT. Organic-fibre grades are hygroscopic: machine DRY with air
+blast (coolant swells 0.001-0.004 in/in). Glass phenolic: flood coolant (glass does
+not absorb water). Formaldehyde off-gases above ~120-140 C (paper max service
+140 C, canvas/linen 125 C): LEV >= 100 FPM with an activated-carbon stage, nitrile
+gloves, P100 for dust; glass grades add HEPA/H13 for fibre. OSHA formaldehyde PEL
+0.75 ppm TWA / 2 ppm STEL. Measure at 68 F / 50% RH after ~24 h equilibration.
+VENDOR CONFLICT: Ready's linen-phenolic page recommends water-soluble coolant;
+its phenolic guide, thermoset hub and sheet guide all say dry only, which is what
+the calculator follows.
+SOURCES
+- https://www.readyplastics.com/resources/machining/phenolic
+- https://www.readyplastics.com/resources/machining
+- https://www.readyplastics.com/resources/machining/thermoset-sheet
+- https://titantooling.ca/panel-applications/feed-speed-guides.html
+- https://www.atlasfibre.com/how-to-choose-the-right-phenolic-grade/
+- https://www.proplasticsinc.com/en/materials/phenolic/
+- https://www.plasticsintl.com/media/i3dhjbyn/phenolic-canvas-ce-data-sheet.pdf
+- https://plastic-craft.com/wp-content/uploads/2026/03/phenolic.pdf
+- https://www.boedeker.com/Product/Phenolic-CE
+
+BUG FIX (found while adding phenolics): the engine ignored chipCurve "plastic"
+(only "soft" was honoured), so all 16 plastics were using the metal chip-load
+curve (~3-4x too light). Now fixed; plastic chip loads match the Harvey chart.
 `;
 
 export default referenceText;

@@ -98,6 +98,22 @@ export const PLASTIC_TURNING = {
   pet_ertalyte:  { rough: [200, 450], finish: [300, 600], fRough: [0.003, 0.012], fFinish: [0.003, 0.006] },
 };
 
+// Phenolic laminate (Textolite / Micarta / Bakelite family) turning windows.
+// Source: Ready Plastics "Machining Phenolic Laminates" grade-by-grade turning
+// tables (rough SFM / finish SFM, IPR, DOC; C-2 carbide, DRY for organic-fibre
+// grades, flood for glass phenolic) and the thermoset hub summary table:
+//   https://www.readyplastics.com/resources/machining/phenolic
+//   https://www.readyplastics.com/resources/machining
+// Published numbers for every entry — no estimates (glass phenolic roughing
+// 250-380 SFM is the processor's own G-3/GP-01 figure).
+export const PHENOLIC_TURNING = {
+  phenolic_xx:     { rough: [400, 600], finish: [600, 900], fRough: [0.008, 0.012], fFinish: [0.003, 0.007], docRough: [0.080, 0.200], docFinish: [0.010, 0.030] },
+  phenolic_ce:     { rough: [350, 550], finish: [550, 750], fRough: [0.006, 0.010], fFinish: [0.003, 0.006], docRough: [0.080, 0.160], docFinish: [0.010, 0.025] },
+  phenolic_le:     { rough: [350, 550], finish: [500, 700], fRough: [0.005, 0.009], fFinish: [0.003, 0.006], docRough: [0.070, 0.150], docFinish: [0.010, 0.025] },
+  phenolic_canvas: { rough: [300, 480], finish: [450, 650], fRough: [0.004, 0.009], fFinish: [0.002, 0.005], docRough: [0.060, 0.130], docFinish: [0.008, 0.020] },
+  phenolic_glass:  { rough: [250, 380], finish: [380, 550], fRough: [0.004, 0.008], fFinish: [0.002, 0.005], docRough: [0.040, 0.090], docFinish: [0.005, 0.015] },
+};
+
 // Handbook modulus of elasticity (psi) for workpiece-deflection estimates
 // (typical MatWeb / Machinery's Handbook values). Plastics are 1-3 orders of
 // magnitude softer than steel, which is why a nylon or PTFE bar deflects under
@@ -106,18 +122,25 @@ export const MODULUS_PSI = {
   steel_mild: 29e6, steel_alloy: 29e6, tool_steel: 30e6, stainless: 28e6,
   cast_iron: 15e6, aluminum: 10e6, nonferrous_soft: 15e6, titanium: 16e6,
   superalloy: 30e6, plastic: 0.4e6, composite: 3e6, wood: 1.5e6,
+  // Phenolic laminates: CE canvas flexural modulus 1.5-1.6 Msi (Norplex-Micarta NP310E via
+  // https://www.proplasticsinc.com/en/materials/phenolic/ and Plastics International CE sheet
+  // https://www.plasticsintl.com/media/i3dhjbyn/phenolic-canvas-ce-data-sheet.pdf); paper/linen assumed the same
+  // (Plastic-Craft lists a lower 1.1 Msi — flexural values vary 1.1-1.6 Msi by supplier).
+  phenolic: 1.5e6,
 };
 export const MODULUS_BY_MATERIAL = {
   uhmw: 0.1e6, hdpe: 0.15e6, polypropylene: 0.2e6, ptfe: 0.06e6, pvc: 0.4e6,
   nylon66: 0.4e6, nylon6_cast: 0.45e6, nylon_gf30: 1.2e6, acrylic: 0.45e6,
   delrin: 0.4e6, abs: 0.35e6, polycarbonate: 0.35e6, peek: 0.5e6, peek_gf30: 1.0e6,
-  pei_ultem: 0.64e6, pet_ertalyte: 0.5e6, copper: 17e6, bronze: 15e6, brass: 15e6,
+  pei_ultem: 0.64e6, pet_ertalyte: 0.5e6,
+  phenolic_xx: 1.3e6, /* ESTIMATE */ phenolic_glass: 2.5e6, /* ESTIMATE — G-3 glass-cloth laminate */ copper: 17e6, bronze: 15e6, brass: 15e6,
 };
 
 // Materials the turning calculator does not cover (no published insert-turning
 // windows): wood and fiber composites.
 export function isTurnable(mat) {
   if (!mat) return false;
+  if (PHENOLIC_TURNING[mat.id]) return true; // phenolics incl. glass phenolic have published windows
   if (mat.materialClass === "wood" || mat.materialClass === "composite") return false;
   return true;
 }
@@ -126,6 +149,9 @@ export function isTurnable(mat) {
 export function turningWindow(mat) {
   if (PLASTIC_TURNING[mat.id]) {
     return { ...PLASTIC_TURNING[mat.id], rowName: mat.name, scale: 1, plastic: true };
+  }
+  if (PHENOLIC_TURNING[mat.id]) {
+    return { ...PHENOLIC_TURNING[mat.id], rowName: mat.name, scale: 1, plastic: true, phenolic: true };
   }
   if (mat.materialClass === "plastic") {
     // custom plastic -> generic Curbell/Ready window
@@ -185,6 +211,12 @@ export const GRADE_MULT = {
   titanium:        { coated: 1.0, uncoated: 0.85, uncoatedEst: true, cermet: null, ceramic: null, pcd: null },
   superalloy:      { coated: 1.0, uncoated: 0.72, cermet: null, ceramic: 4.0, pcd: null },
   plastic:         { coated: 1.0, uncoated: 1.0, cermet: null, ceramic: null, pcd: 1.0 },
+  // Phenolic: C-2 UNCOATED carbide is the processor's standard grade (not slower);
+  // PCD gives tool life, not speed, on organic-fibre grades (heat/formaldehyde-limited)
+  // — multiplier 1.0 is an ENGINEERING ESTIMATE (Ready Plastics phenolic guide).
+  phenolic:        { coated: 1.0, uncoated: 1.0, cermet: null, ceramic: null, pcd: 1.0, pcdEst: true },
+  // Only reachable by glass-cloth phenolic (G10/G11/CFRP are not turnable here).
+  composite:       { coated: 1.0, uncoated: 1.0, cermet: null, ceramic: null, pcd: 1.0, pcdEst: true },
 };
 
 // HSS absolute turning speeds (SFM) by class — carbide-multiplier shortcuts
@@ -199,6 +231,7 @@ export const HSS_TURNING = {
   steel_alloy:     { rough: [80, 110], finish: [90, 135], est: true },
   stainless:       { rough: [40, 60], finish: [60, 100] },
   cast_iron:       { rough: [60, 100], finish: [80, 100] },
+  phenolic:        { mult: 0.5, est: true }, // ESTIMATE: Ready — HSS viable on XX/CE at low volume; ratio matches cncData TOOL_MATERIAL_CLASS_MULT.phenolic.hss
   plastic:         { mult: 0.67 }, // existing plastics HSS/carbide ratio (cncData TOOL_MATERIAL_CLASS_MULT)
 };
 // not recommended with HSS: titanium, superalloy (use carbide).

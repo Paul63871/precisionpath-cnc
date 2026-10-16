@@ -166,8 +166,11 @@ export function calculate(input) {
     if (hole.id === "blind" && style.id === "straight_flute" && depthRatio > 1.5) tapping.notes.push(`Blind-hole depth is ${depthRatio.toFixed(1)}×D — beyond the ~1.5×D chip-storage limit of a straight-flute tap at this diameter.`);
     if (mat.category === "Stainless" || mat.category === "Titanium" || mat.category === "Superalloy") tapping.notes.push("Work-hardening / heat-sensitive alloy — use cobalt or coated tap, keep speed down, flood coolant or tapping fluid.");
     if (style.id === "forming" && (mat.category === "Cast Iron" || mat.category === "Iron")) tapping.notes.push("Forming/roll taps are not recommended in cast iron — the material doesn't deform ductilely enough to form a clean thread.");
-    if (style.id === "forming" && mat.category === "Composite") tapping.notes.push("Forming/roll taps are not recommended in fiberglass/carbon laminates — the fibers shear or crack instead of deforming plastically. Use a sharp cutting tap.");
-    if (mat.category === "Composite") tapping.notes.push(`Direct tapping in laminate is workable for low-cycle, static joints (increase thread engagement to 1.5-2.5×D vs the usual metal 75% depth, keep the tap sharp, cut rather than force it). For repeated assembly/disassembly or high-load joints, use a bonded or mechanically retained metal insert (Heli-Coil, threaded insert) instead — current thread depth is ${depthRatio.toFixed(1)}×D.`);
+    const isLaminate = mat.category === "Composite" || mat.materialClass === "composite" || mat.materialClass === "phenolic";
+    if (style.id === "forming" && isLaminate) tapping.notes.push("Forming/roll taps are not recommended in fiberglass/carbon laminates — the fibers shear or crack instead of deforming plastically. Use a sharp cutting tap.");
+    if (mat.materialClass === "phenolic") {
+      tapping.notes.push("Phenolic: tap DRY with a sharp cutting tap at ~65-70% thread engagement — cotton/canvas fibre grips the tap body and galls in a full-depth thread. A light mineral oil brushed on the TAP only is acceptable; wipe the part clean immediately (hygroscopic). Back the hole exit with a sacrificial board to avoid breakout (Ready Plastics phenolic guide: https://www.readyplastics.com/resources/machining/phenolic).");
+    } else if (isLaminate) tapping.notes.push(`Direct tapping in laminate is workable for low-cycle, static joints (increase thread engagement to 1.5-2.5×D vs the usual metal 75% depth, keep the tap sharp, cut rather than force it). For repeated assembly/disassembly or high-load joints, use a bonded or mechanically retained metal insert (Heli-Coil, threaded insert) instead — current thread depth is ${depthRatio.toFixed(1)}×D.`);
     if (style.note) tapping.notes.push(style.note);
 
     // Horsepower / torque for tapping is small relative to milling/drilling —
@@ -236,7 +239,7 @@ export function calculate(input) {
     const holeDepth = (featureDepth && featureDepth > 0) ? featureDepth : (loc || diameter * 3);
     const depthRatio = holeDepth / diameter;
     const peckBase = (mat.category === "Stainless" || mat.category === "Titanium" || mat.category === "Superalloy") ? 0.5
-      : (mat.category === "Composite") ? 0.6
+      : (mat.category === "Composite" || mat.materialClass === "composite" || mat.materialClass === "phenolic") ? 0.6
       : (mat.category === "Steel" || mat.category === "Iron") ? 0.75
       : 1.0;
     deepHoleFeedFactor = clamp(1 - Math.max(0, depthRatio - 3) * 0.06, 0.4, 1.0);
@@ -251,6 +254,10 @@ export function calculate(input) {
     if (depthRatio > 3) dNotes.push(`Deep hole (${depthRatio.toFixed(1)}×D) — peck drilling (G83) with full retract to clear chips.`);
     if (depthRatio > 5) dNotes.push(`Very deep hole — feed reduced ${Math.round((1 - deepHoleFeedFactor) * 100)}% to protect the drill.`);
     if (loc && holeDepth > loc) dNotes.push(`Hole depth exceeds flute LOC (${loc}") — ensure through-spindle coolant or peck to evacuate chips.`);
+    if (mat.materialClass === "phenolic" || mat.materialClass === "composite") {
+      dNotes.push("Laminate drilling: clamp a sacrificial backing board under the exit (G10/thermoset scrap 0.125 in or MDF — never metal, it dulls the drill) and cut the feed 50% over the last 20% of hole depth to prevent bottom-ply delamination. Parabolic-flute carbide recommended; pecking is not needed below ~6×D (Ready Plastics thermoset-sheet guide).");
+      if (mat.materialClass === "phenolic") dNotes.push("Drill DRY with air blast — the organic fibre absorbs coolant.");
+    }
     if (tm.id === "carbide" && depthRatio > 3) dNotes.push("Pecking carbide drills risks edge chipping — prefer parabolic carbide or HSS for deep pecking.");
     if (mat.category === "Stainless" || mat.category === "Titanium" || mat.category === "Superalloy") dNotes.push("Work-hardening alloy — pecks clear chips and prevent hardening at the hole bottom; keep feed up.");
     drilling = {
@@ -527,8 +534,16 @@ export function calculate(input) {
   if (override?.sfm) {
     sfm = override.sfm * op.sfmMult;
   } else {
-    const [sfmMin, sfmMax] = mat.sfmRange;
-    sfm = lerp(sfmMin, sfmMax, agg) * toolMatMult * coat.sfmMult * op.sfmMult * tt.sfmMult;
+    // Materials that publish a dedicated ABSOLUTE drilling SFM window (phenolic
+    // laminates: Ready Plastics 300-500 SFM) use it for drill ops, bypassing the
+    // generic drilling op.sfmMult (which would double-derate a sourced figure).
+    // Phenolic speed windows are published for UNCOATED, polished C-2 carbide
+    // (Ready Plastics) — that is the reference tool, so the metal-derived 0.72x
+    // "uncoated" derate must not be applied on top of them.
+    const coatSfmMult = (mat.materialClass === "phenolic" && coat.id === "none") ? 1.0 : coat.sfmMult;
+    const useDrillRange = !!(mat.drillSfmRange && (op.docMode === "drill" || tt.isDrill));
+    const [sfmMin, sfmMax] = useDrillRange ? mat.drillSfmRange : mat.sfmRange;
+    sfm = lerp(sfmMin, sfmMax, agg) * toolMatMult * coatSfmMult * (useDrillRange ? 1 : op.sfmMult) * tt.sfmMult;
   }
   // Standard 20% slotting speed derate (Kennametal, CGS Tool) — full-width
   // engagement generates more heat per flute pass than partial-width milling.
@@ -561,12 +576,16 @@ export function calculate(input) {
   // for manufacturer sourcing). mat.chipLoadFactor still applies on top, same
   // as milling, to scale for material hardness.
   const isDrillOp = op.docMode === "drill" || tt.isDrill;
-  const chipCurve = isDrillOp ? "drill" : mat.chipCurve === "soft" ? "soft" : "metal";
+  const chipCurve = isDrillOp ? "drill" : (mat.chipCurve === "soft" || mat.chipCurve === "plastic") ? mat.chipCurve : "metal";
   let chipLoad;
   if (override?.chipLoad) {
     chipLoad = override.chipLoad * op.chipMult * lerp(0.8, 1.0, aggQ);
   } else {
-    chipLoad = baseChipLoad(diameter, chipCurve) * mat.chipLoadFactor * op.chipMult * tt.chipMult;
+    // drillChipLoadFactor: materials with a published ABSOLUTE drilling IPR
+    // window (phenolics: Ready Plastics 0.004-0.008 IPR) override the milling-
+    // derived chipLoadFactor when drilling.
+    const matChipFactor = (isDrillOp && mat.drillChipLoadFactor) ? mat.drillChipLoadFactor : mat.chipLoadFactor;
+    chipLoad = baseChipLoad(diameter, chipCurve) * matChipFactor * op.chipMult * tt.chipMult;
     chipLoad *= lerp(0.75, 1.05, aggQ);
   }
   // Ball nose feed-per-tooth compensation: at reduced effective diameter the
@@ -920,6 +939,7 @@ export function calculate(input) {
   const warnings = [...thinningNotes, ...circWarn];
   if (mat.notes && mat.notes.length) for (const n of mat.notes) warnings.push(`${mat.name}: ${n}`);
   if (mat.abrasive && (tm.id === "hss" || tm.id === "cobalt")) warnings.push(`${mat.name} is abrasive — ${tm.name} will wear very quickly; use solid carbide (diamond-coated or PCD for production).`);
+  if (mat.materialClass === "phenolic" && (tm.id === "hss" || tm.id === "cobalt")) warnings.push(`${mat.name}: ${tm.name} is viable only for low volume (< ~20 parts per operation) on paper/cotton phenolic — carbide (uncoated C-2, sharp, polished flutes) is the standard and holds life far longer. A dulling tool raises heat, which drives formaldehyde off-gassing and edge chipping (Ready Plastics phenolic guide). Speeds shown use an estimated HSS derate.`);
   if (mat.materialClass === "plastic" && clampForce && clampForce > 1500) warnings.push(`Plastics deform under clamping load that is routine for metal — your vise is rated ${Math.round(clampForce)} lbf. Torque it down just enough to hold (cutting forces in plastic are a few pounds), use wide flat soft jaws or vacuum, and re-measure after release (Ready Plastics: over-clamping bows/pinches nylon, PP, PTFE and Ertalyte).`);
   if (finishFirst && op.finishing && deflection && deflection.estimateIn > deflection.limitIn) warnings.push(`Finish quality: estimated worst-case tool deflection is ${deflection.estimateIn.toFixed(4)}" (> ${deflection.limitIn}") at ${loc}" LOC — shorten the stickout, use a larger/stub tool, or add a spring pass; a deflected finish pass leaves taper and a step at the end of the cut.`);
   if (feedMarkCapped) warnings.push(`Finish quality: feed per tooth was reduced so the theoretical feed-mark cusp (fz²/4D) stays within the ${Math.round(raTargetIn * 1e6)} µin Ra target.`);

@@ -79,7 +79,7 @@ export function calculateTurning(input) {
   // feed, depth of cut and HP budget move with the priority shift.
   const aggQ = clamp(agg + (prio === "finish" ? -0.2 : prio === "speed" ? 0.15 : 0), 0, 1);
   const matClass = mat.materialClass;
-  const gradeClass = matClass === "plastic" ? "plastic" : (matClass === "aluminum" || matClass === "nonferrous_soft" || GRADE_MULT[matClass]) ? matClass : "steel_mild";
+  const gradeClass = (matClass === "plastic" || matClass === "phenolic" || matClass === "composite") ? matClass : (matClass === "aluminum" || matClass === "nonferrous_soft" || GRADE_MULT[matClass]) ? matClass : "steel_mild";
 
   // --- Lathe drilling: delegate to the verified drilling model --------------
   if (op.kind === "drill") {
@@ -113,7 +113,7 @@ export function calculateTurning(input) {
   if (gradeId === "hss") {
     const h = HSS_TURNING[gradeClass];
     if (!h) { warnings.push(`HSS tool bits are not recommended for ${mat.name} — carbide numbers are used instead.`); gradeUsed = "coated"; }
-    else if (h.mult) { gradeMult = h.mult; }
+    else if (h.mult) { gradeMult = h.mult; if (h.est) estimates.push(`HSS speed ratio for ${mat.name} (${h.mult}× carbide) is an engineering estimate — Ready Plastics only states HSS is viable at low volume.`); }
     else {
       const sc = win.scale || 1;
       sfmRough = h.rough.map((v) => v * sc);
@@ -404,7 +404,14 @@ export function calculateTurning(input) {
   const finalIpm = ipm;
 
   // --- Material-specific warnings ---------------------------------------------------
-  if (mat.notes && mat.notes.length) for (const n of mat.notes) warnings.push(`${mat.name}: ${n}`);
+  {
+    const matNotes = mat.turnNotes || mat.notes;
+    if (matNotes && matNotes.length) for (const n of matNotes) warnings.push(`${mat.name}: ${n}`);
+  }
+  if (matClass === "phenolic") {
+    notes.push("Phenolic turning: use a sharp C-2 uncoated carbide insert with a polished chip face, positive rake +5° to +10°, relief 8–12°, no T-land and no chipbreaker (Ready Plastics phenolic guide). Run DRY with an air blast to clear chips and keep local exhaust at the cut.");
+    notes.push("Paper/cotton phenolic (XX, CE) can be turned with HSS at low volume (< ~20 parts); canvas needs carbide. Let parts equilibrate ~24 h at ambient conditions and measure at 68 °F / 50% RH before final inspection.");
+  }
   if (matClass === "plastic") {
     notes.push("Plastics: use a sharp, polished-top uncoated/PCD insert with positive rake (10–15°) and generous clearance, nose radius ≈ 0.015–0.030\"; rubbing instead of cutting heats and smears the surface (Ready Plastics, Curbell).");
     notes.push("Let stock stabilise to room temperature and, for tight tolerances, rough, rest 24 h (stress relief), then finish — plastics move with temperature, moisture and released stress.");

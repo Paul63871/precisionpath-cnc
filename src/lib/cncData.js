@@ -18,6 +18,22 @@
 // "soft" for wood/soft plastics, which cut much thicker chips at small diameters
 // than the aluminum-derived metal curve.
 
+// Shared cautions for organic-fibre phenolic laminates (XX/CE/LE/C) — shown as
+// machining warnings in the results. Sources: Ready Plastics phenolic and
+// thermoset-sheet guides (https://www.readyplastics.com/resources/machining/phenolic).
+// Some vendor pages (e.g. Ready's linen-phenolic page) suggest water-soluble
+// coolant for dust suppression; the hygroscopic-swell evidence and the
+// processor's own phenolic guide say dry, so dry/air-blast is used here.
+const PHENOLIC_COMMON_NOTES = [
+  "MACHINE DRY. Paper/cotton/linen/canvas phenolics are hygroscopic — water-soluble coolant swells them 0.001-0.004 in/in across the laminate and degrades electrical properties. Air blast only; a light mineral oil brushed on a TAP only is acceptable (wipe the part immediately).",
+  "Formaldehyde hazard: phenol-formaldehyde matrix off-gases when it exceeds ~120-140 C (dull tool, excess SFM, rubbing). Use local exhaust at the cut (>=100 FPM capture velocity) with an activated-carbon stage (HEPA alone does not catch vapour), nitrile gloves (skin sensitiser) and a P100 respirator for dust. OSHA formaldehyde PEL 0.75 ppm TWA / 2 ppm STEL.",
+  "Dimensions drift with humidity: measure at 68 F / 50% RH and let machined parts equilibrate ~24 h before final inspection; store flat and dry.",
+];
+// Milling/routing/drilling-only cautions (not shown on the Turning page).
+const PHENOLIC_NOTES = PHENOLIC_COMMON_NOTES.concat([
+  "Delamination at exits is the main quality defect: use a sacrificial backing board (never metal), climb mill, and take a ~0.010-0.030 in radial finish pass at ~50% of roughing feed with a freshly sharp 2-flute upcut carbide tool (positive rake, no chipbreaker). Keep 0.100 in clamp-to-path clearance and support the work fully — do not cantilever.",
+]);
+
 export const PART_MATERIALS = [
   { id: "alum_6061", name: "Aluminum 6061", category: "Aluminum", materialClass: "aluminum",
     sfmRange: [700, 1400], chipLoadFactor: 1.0, hpFactor: 0.35,
@@ -222,6 +238,60 @@ export const PART_MATERIALS = [
     sfmRange: [250, 450], chipLoadFactor: 0.45, hpFactor: 0.15, hpFactorEstimate: true, chipCurve: "plastic",
     slotDepthFactor: 0.5, profileDepthFactor: 1.0,
     notes: ["Ertalyte machines cleanly, low moisture uptake (<0.05% at saturation) — no pre-drying needed — but long stringy chips wrap the tool, so clear chips with air. Climb milling preferred; use soft jaws/collet on thin tube walls (Ready Plastics PET guide: https://www.readyplastics.com/resources/materials/pet/machining)."] },
+  // ---------------------------------------------------------------------------
+  // PHENOLIC LAMINATES (Textolite / Micarta / Bakelite family) — NEMA LI-1
+  // grades XX (paper), C/CE (canvas), L/LE (linen), plus glass-cloth phenolic
+  // (G-3 / GP-01). "Textolite" (GE), "Micarta" (Norplex-Micarta) and "Bakelite"
+  // are trade names for these laminates, so they are in the names for search.
+  // Organic-fibre grades (paper/cotton/linen/canvas) are LOW abrasion — they
+  // run fast and last long in carbide, and HSS is viable at low volume — but
+  // they are hygroscopic (machine DRY, air blast only), off-gas formaldehyde
+  // if the matrix exceeds ~120-140 C (LEV + activated carbon), and delaminate
+  // at exits. Glass-cloth phenolic is as abrasive as G10 (class "composite").
+  // Sources (Ready Plastics, all grade-by-grade tables):
+  //   https://www.readyplastics.com/resources/machining/phenolic
+  //   https://www.readyplastics.com/resources/machining/thermoset-sheet
+  //   https://www.readyplastics.com/resources/machining
+  // sfmRange = low end: conventional end-mill guidance (Ready paper/linen
+  //   pages, 300-700 SFM); high end: Ready routing RPM windows at a 1/4 in
+  //   router (XX 20-26k, CE/LE 18-24k, canvas 16-22k RPM -> ~1050-1300 SFM).
+  // chipLoadFactor on CHIP_LOAD_TABLE_PLASTIC: 1/4 in -> ~0.0033-0.0036 in/tooth
+  //   and 1/2 in -> ~0.0054-0.0060, bracketed by Ready routing (80-150 IPM at
+  //   18-24k RPM, 2 flutes = 0.0017-0.0042) and Titan Tooling phenolic/compact-
+  //   laminate chart (1/4 in 0.004-0.006, 1/2 in 0.008-0.010):
+  //   https://titantooling.ca/panel-applications/feed-speed-guides.html
+  // drillSfmRange / drillChipLoadFactor: Ready drilling tables (absolute SFM and
+  //   IPR: 300-500 SFM & 0.004-0.008 IPR cotton/linen/paper; 250-450 & 0.003-0.007
+  //   canvas; 200-350 & 0.003-0.006 glass phenolic) — factors tuned so 1/4-1/2 in
+  //   drills land inside those IPR windows at the default setting.
+  // slot/profile DOC: Ready routing per-pass 0.060-0.200 in (canvas: sheet/2).
+  // hpFactor values are engineering ESTIMATES (hpFactorEstimate) — unit power
+  // for phenolics is not published by the processors.
+  // ---------------------------------------------------------------------------
+  { id: "phenolic_xx", name: "Paper Phenolic XX (Bakelite)", category: "Phenolic", materialClass: "phenolic",
+    sfmRange: [400, 1300], drillSfmRange: [300, 500], drillChipLoadFactor: 0.8, chipLoadFactor: 0.45, hpFactor: 0.15, hpFactorEstimate: true, chipCurve: "plastic",
+    slotDepthFactor: 0.5, profileDepthFactor: 1.5, phenolicGrade: "xx",
+    turnNotes: PHENOLIC_COMMON_NOTES, notes: PHENOLIC_NOTES.concat(["Paper phenolic (XX) is the most brittle of the family — it chips at entries/exits and unsupported edges. Clamp near the cut, approach from a supported direction, and reduce DOC at entry (Ready Plastics). Max continuous service ~140 C (Atlas Fibre)."]) },
+  { id: "phenolic_ce", name: "Cotton Phenolic CE (Textolite / Micarta)", category: "Phenolic", materialClass: "phenolic",
+    sfmRange: [400, 1200], drillSfmRange: [300, 500], drillChipLoadFactor: 0.8, chipLoadFactor: 0.45, hpFactor: 0.17, hpFactorEstimate: true, chipCurve: "plastic",
+    slotDepthFactor: 0.5, profileDepthFactor: 1.5, phenolicGrade: "ce",
+    turnNotes: PHENOLIC_COMMON_NOTES, notes: PHENOLIC_NOTES.concat(["Canvas/cotton phenolic CE: tough and wear-resistant, flexural modulus ~1.6 Msi (Norplex-Micarta NP310E). Max continuous service ~125 C (Atlas Fibre) — keep the tool sharp so the matrix stays well below that."]) },
+  { id: "phenolic_le", name: "Linen Phenolic LE (fine weave, Micarta)", category: "Phenolic", materialClass: "phenolic",
+    sfmRange: [400, 1150], drillSfmRange: [300, 500], drillChipLoadFactor: 0.8, chipLoadFactor: 0.40, hpFactor: 0.17, hpFactorEstimate: true, chipCurve: "plastic",
+    slotDepthFactor: 0.5, profileDepthFactor: 1.2, phenolicGrade: "le",
+    turnNotes: PHENOLIC_COMMON_NOTES, notes: PHENOLIC_NOTES.concat(["Linen phenolic LE: fine-weave grade for small gears/precision parts and fine finish; Ready Plastics rates it low-to-moderate abrasion and gives a lighter milling chip load (0.002-0.004 in/tooth) than cotton."]) },
+  { id: "phenolic_canvas", name: "Canvas Phenolic C (Textolite / Micarta)", category: "Phenolic", materialClass: "phenolic",
+    sfmRange: [350, 1050], drillSfmRange: [250, 450], drillChipLoadFactor: 0.7, chipLoadFactor: 0.40, hpFactor: 0.20, hpFactorEstimate: true, chipCurve: "plastic",
+    slotDepthFactor: 0.4, profileDepthFactor: 1.0, phenolicGrade: "canvas",
+    turnNotes: PHENOLIC_COMMON_NOTES, notes: PHENOLIC_NOTES.concat(["Heavy canvas phenolic is the toughest and most abrasive of the organic grades (Ready: moderate abrasion — use carbide, HSS dulls quickly). The coarse weave frays when the tool dulls or feed is too high: climb mill and finish at ~50% of roughing feed. Route at no more than sheet thickness / 2 per pass (Ready Plastics)."]) },
+  { id: "phenolic_glass", name: "Glass Phenolic G-3 / GP-01 (glass cloth)", category: "Phenolic", materialClass: "composite",
+    sfmRange: [300, 550], drillSfmRange: [200, 350], chipLoadFactor: 0.6, hpFactor: 0.25, hpFactorEstimate: true,
+    slotDepthFactor: 0.9, profileDepthFactor: 1.5, abrasive: true, phenolicGrade: "glass",
+    notes: [
+      "Glass-cloth phenolic is as abrasive as G10 — use C-2 carbide (PCD/diamond for volume) and flood coolant (glass fibre does not absorb water like the organic-fibre grades) per Ready Plastics: https://www.readyplastics.com/resources/machining/phenolic. SFM here is an engineering estimate (~G10 x 0.85, scaled from Ready's 250-380 SFM turning window).",
+      "Respirable glass fibre PLUS formaldehyde: HEPA/H13 extraction with an activated-carbon stage, P100 respirator, nitrile gloves. OSHA formaldehyde PEL 0.75 ppm TWA.",
+      "Always use a sacrificial backing board (G10/thermoset scrap 0.125 in or MDF — never metal) and cut the feed 50% over the last 20% of drill depth to avoid bottom-ply delamination.",
+    ] },
   { id: "cfrp", name: "Carbon Fiber (CFRP)", category: "Composite", materialClass: "composite",
     sfmRange: [300, 600], chipLoadFactor: 0.6, hpFactor: 0.28,
     slotDepthFactor: 1.0, profileDepthFactor: 1.5 },
@@ -275,6 +345,12 @@ export const TOOL_MATERIAL_CLASS_MULT = {
   wood:            { hss: 0.60, cobalt: 0.65, indexable: 1.00, pcd: 4.0 },
   plastic:         { hss: 0.67, cobalt: 0.70, indexable: 1.00, pcd: 3.0 },
   composite:       { hss: 0.30, cobalt: 0.35, indexable: 0.90, pcd: 5.0 },
+  // Organic-fibre phenolics (paper/cotton/linen/canvas): HSS is viable for low
+  // volume (<~20 parts/op) per Ready Plastics, but wears faster than carbide —
+  // 0.50/0.55 are ENGINEERING ESTIMATES. PCD gives no speed gain: speed is
+  // heat-limited (formaldehyde off-gas > ~120-140 C) and Ready calls PCD
+  // economically unjustifiable for non-glass phenolics.
+  phenolic:        { hss: 0.50, cobalt: 0.55, indexable: 1.00, pcd: 1.0 },
 };
 
 // Coating multipliers on top of a coated-carbide SFM baseline (AlTiN/TiAlN = 1.00
@@ -459,6 +535,10 @@ export const WOC_CLASS_TARGETS = {
   wood:             { roughPct: [0.20, 0.35], finishPct: [0.05, 0.08], ceiling: 0.40 },
   plastic:          { roughPct: [0.15, 0.30], finishPct: [0.05, 0.08], ceiling: 0.35 },
   composite:        { roughPct: [0.10, 0.20], finishPct: [0.05, 0.08], ceiling: 0.20 },
+  // Phenolic: rough bands are ENGINEERING ESTIMATES (brittle laminate — kept
+  // below plastics); finish band matches Ready Plastics' 0.015-0.030 in radial
+  // finish pass (~5-8% of a 1/4-3/8 in tool): readyplastics.com/resources/machining/thermoset-sheet
+  phenolic:         { roughPct: [0.15, 0.25], finishPct: [0.05, 0.08], ceiling: 0.30 },
 };
 
 // Radial engagement targets for STRAIGHT PERIPHERAL/CONTOUR roughing (climb-
@@ -487,6 +567,7 @@ export const PERIPHERAL_ROUGH_WOC_TARGETS = {
   wood:             { roughPct: [0.40, 0.55], ceiling: 0.55 },
   plastic:          { roughPct: [0.35, 0.50], ceiling: 0.50 },
   composite:        { roughPct: [0.25, 0.40], ceiling: 0.40 },
+  phenolic:         { roughPct: [0.30, 0.45], ceiling: 0.45 }, // ESTIMATE — Ready routes full depth in one pass; radial band sits between composite and plastic
 };
 
 // --- TAPPING ---
@@ -518,6 +599,8 @@ export const TAP_SFM_BY_CLASS = {
   superalloy:      [5, 10],    // Viking nickel alloys 10, Nimonic 10-12 — Inconel/Hastelloy treated conservatively
   wood:             [50, 90],  // no direct tap data — plastics/soft-material analog retained conservatively
   plastic:          [50, 90],  // Viking plastic 50-70, Magotan-style thermoplastics range (cut/thread-forming taps)
+  phenolic:         [40, 70],  // ESTIMATE — no phenolic tap SFM is published; set at the Viking plastic band (50-70) trimmed ~15% for galling-prone
+                                // cotton/canvas weave. Ready Plastics: sharp cutting tap, 65-70% thread engagement, light mineral oil on the tap only.
   composite:        [50, 100], // G10/G11/CFRP direct tapping (sharp cutting tap, not forming/roll — glass/carbon
                                 // fiber doesn't deform ductilely). jhd-material cites 50-150 SFM for composite
                                 // tapping; kept to the lower half of that band since it's a single-source figure
