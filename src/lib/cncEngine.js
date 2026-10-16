@@ -540,12 +540,17 @@ export function calculate(input) {
   let radiusEngMult = 1;
   let formEffD = null;
   if (formKind) {
-    const R = cornerRadius > 0 ? cornerRadius : diameter * 0.1;
-    const pilot = formKind === "corner_round" ? diameter - 2 * R : diameter - 2 * R;
+    let R = cornerRadius > 0 ? cornerRadius : diameter * 0.1;
     if (!(cornerRadius > 0)) radiusNotes.push(`No radius entered — assuming ${R.toFixed(3)}" (10% of diameter). Enter the actual cutter radius.`);
-    if (pilot <= 0.0005) {
-      return { error: formKind === "corner_round" ? `Corner radius (${R}") must be smaller than half the cutter diameter (${(diameter / 2).toFixed(3)}").` : `Radius (${R}") must be smaller than half the cutter diameter (${(diameter / 2).toFixed(3)}") so the cutter has a core diameter.`, warnings: [] };
+    // A radius at/over half the diameter leaves no core, so it is not a physical
+    // cutter. Never return an error object here (the UI reads woc/doc/etc. on every
+    // keystroke while the user is typing) — clamp to 45% of D and say so.
+    const Rmax = diameter * 0.45;
+    if (R > Rmax) {
+      radiusNotes.push(`Radius ${R}" is too large for a ${diameter}" cutter (must be < ${(diameter / 2).toFixed(3)}", leaving a core) — calculated with ${Rmax.toFixed(3)}" instead. Check the radius and diameter you entered.`);
+      R = Rmax;
     }
+    const pilot = diameter - 2 * R;
     formEffD = formKind === "corner_round"
       ? (R / pilot < 2.5 ? pilot + R : pilot + 0.7 * R)
       : pilot;
@@ -563,9 +568,12 @@ export function calculate(input) {
     if (formKind === "corner_round") radiusNotes.push("Corner-rounding cutters are side-cutting only: round the edge from the side or in an existing slot; do not plunge into solid. Plunging into a hole needs the chip load cut to 40–50% (choose that engagement).");
     if (R / pilot >= 2.5) radiusNotes.push("Radius/pilot ratio ≥ 2.5: effective diameter uses 0.7×R (Harvey).");
   } else if (radiusKind === "round_insert") {
-    const iC = insertIc > 0 ? insertIc : diameter * 0.5;
+    let iC = insertIc > 0 ? insertIc : diameter * 0.5;
     if (!(insertIc > 0)) radiusNotes.push(`No insert diameter entered — assuming IC ${iC.toFixed(3)}" (half the cutter diameter).`);
-    if (iC >= diameter) return { error: `Insert diameter (${iC}") must be smaller than the cutter diameter (${diameter}").`, warnings: [] };
+    if (iC > diameter * 0.9) {
+      radiusNotes.push(`Insert diameter ${iC}" must be smaller than the ${diameter}" cutter diameter — calculated with ${(diameter * 0.9).toFixed(3)}" instead. Check the values you entered.`);
+      iC = diameter * 0.9;
+    }
     const apR = Math.min(doc, iC / 2);
     const De = diameter - iC + Math.sqrt(Math.max(0, iC * iC - Math.pow(iC - 2 * apR, 2)));
     formEffD = Math.max(De, diameter * 0.2);

@@ -819,8 +819,8 @@ radiusCutter{kind, radius, pilotDiameter, passes, passSchedule, axialThinning}).
 - Bull nose (cnc57 / Mentor): for ap < r, De = (D - 2r) + 2 sqrt(ap (2r - ap)) and
   the feed rises by 1/sin(kappa), sqrt(1 - (1 - ap/r)^2), capped at 2x. At or
   above the corner radius De = D and nothing changes (regression-neutral).
-- Geometry errors: R >= D/2 is rejected for corner rounding / concave; IC >= D
-  for round inserts.
+- Geometry guard: R >= D/2 (no core) is clamped to 0.45 D with a warning for corner rounding / concave, and IC >= D to 0.9 D for
+  round inserts. The engine never returns an error object for these inputs (the UI reads results on every keystroke).
 SOURCES
 - https://harveyperformance.widen.net/content/57m86cyknv/pdf/SF_712500.pdf
 - https://harveyperformance.widen.net/content/pba67otskw/pdf/SF_32800.pdf
