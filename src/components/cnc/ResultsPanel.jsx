@@ -34,6 +34,12 @@ export default function ResultsPanel({ result, units = "imperial" }) {
         <Metric icon={TrendingUp} label={result.tapping ? "Pitch" : result.drilling ? "Feed/Rev" : "Feed/Tooth"} value={result.tapping ? fmt(lenFromImp(result.tapping.pitch || 0, units), 4) : fmt(lenFromImp(result.programmedFpt ?? result.chipLoad, units), 4)} unit={result.tapping ? `${u.length}/rev${result.tapping.tpi ? ` (${result.tapping.tpi} TPI)` : ""}` : result.drilling ? `${u.length}/rev` : `${u.length}/tooth`} />
         <Metric icon={Zap} label="Power" value={fmt(power, 2)} unit={`/ ${fmt(powerAvail, 1)} ${u.power}`} accent={hpColor} />
       </div>
+      {result.feedPerRev != null && !result.tapping && !result.drilling && (
+        <div className="rounded-lg border border-border bg-muted/30 px-3 py-2 flex items-center justify-between text-xs">
+          <span className="text-muted-foreground">Feed per revolution (spindle) = feed ÷ RPM</span>
+          <span className="font-mono tabular-nums text-foreground">{fmt(lenFromImp(result.feedPerRev, units), 4)} {u.length}/rev</span>
+        </div>
+      )}
       {result.adaptive && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
           The <span className="font-medium">Radial WOC</span> above is your <span className="font-medium">Optimal Load</span> (max stepover) — enter it in HSMWorks → Passes → Optimal Load.
@@ -137,6 +143,54 @@ export default function ResultsPanel({ result, units = "imperial" }) {
           {result.circular.notes.length > 0 && (
             <div className="space-y-1 pt-0.5">
               {result.circular.notes.map((n, i) => (<p key={i} className="text-[11px] text-muted-foreground leading-relaxed">• {n}</p>))}
+            </div>
+          )}
+        </div>
+      )}
+      {result.entry && (
+        <div className="rounded-lg border border-border bg-card px-4 py-3 space-y-2.5">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Entry into Stock — {{ helix: "Helical Ramp", ramp: "Linear Ramp", plunge: "Plunge", predrilled: "Pre-drilled / Side Entry" }[result.entry.method]}
+            </span>
+            {result.entry.rampAngleDeg != null && result.entry.method !== "plunge" && result.entry.method !== "predrilled" && (
+              <span className="font-mono text-sm font-semibold text-brand">{result.entry.rampAngleDeg}° ramp</span>
+            )}
+          </div>
+          {result.entry.rampFeed != null && (
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-md bg-muted px-3 py-2">
+                <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Entry cutting-edge feed</div>
+                <div className="font-mono text-base tabular-nums">{feedFromImp(result.entry.entryEdgeIpm, units).toLocaleString(undefined, { maximumFractionDigits: 1 })} <span className="text-xs text-muted-foreground">{u.feed}</span></div>
+              </div>
+              <div className="rounded-md bg-brand/10 px-3 py-2">
+                <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{result.entry.method === "helix" ? "Ramp feedrate (G2/G3 centerline)" : result.entry.method === "plunge" ? "Plunge feedrate" : "Ramp feedrate"}</div>
+                <div className="font-mono text-base tabular-nums text-brand font-semibold">{feedFromImp(result.entry.rampFeed, units).toLocaleString(undefined, { maximumFractionDigits: 1 })} <span className="text-xs text-muted-foreground">{u.feed}</span></div>
+              </div>
+            </div>
+          )}
+          {result.entry.rampFeed != null && (
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+              <div className="flex justify-between"><span className="text-muted-foreground">Entry feed / tooth</span><span className="font-mono">{fmt(lenFromImp(result.entry.entryFpt, units), 4)} {u.length} ({Math.round(result.entry.entryFeedFactor * 100)}% of normal)</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Spindle feed / rev</span><span className="font-mono">{fmt(lenFromImp(result.entry.feedPerRev, units), 4)} {u.length}/rev</span></div>
+              {result.entry.method === "helix" && result.entry.pitchPerOrbit != null && (
+                <>
+                  <div className="flex justify-between"><span className="text-muted-foreground">Helix hole Ø</span><span className="font-mono">{fmt(lenFromImp(result.entry.helixHoleDia, units), 3)} {u.length} ({result.entry.helixHoleMult}× tool)</span></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">Path circle Ø</span><span className="font-mono">{fmt(lenFromImp(result.entry.pathDia, units), 3)} {u.length}</span></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">Helix pitch / orbit</span><span className="font-mono">{fmt(lenFromImp(result.entry.pitchPerOrbit, units), 4)} {u.length}</span></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">Turns to depth</span><span className="font-mono">{result.entry.turns} ({fmt(lenFromImp(result.entry.entryDepth, units), 3)} {u.length})</span></div>
+                </>
+              )}
+              {result.entry.method === "ramp" && (
+                <div className="flex justify-between col-span-2"><span className="text-muted-foreground">Ramp length for depth</span><span className="font-mono">{fmt(lenFromImp(result.entry.rampLength, units), 3)} {u.length}</span></div>
+              )}
+              <div className="flex justify-between"><span className="text-muted-foreground">Z feed</span><span className="font-mono">{feedFromImp(result.entry.axialFeedIpm, units).toLocaleString(undefined, { maximumFractionDigits: 2 })} {u.feed}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Z per spindle rev</span><span className="font-mono">{fmt(lenFromImp(result.entry.axialIprSpindle, units), 5)} {u.length}/rev</span></div>
+            </div>
+          )}
+          {result.entry.notes.length > 0 && (
+            <div className="space-y-1 pt-0.5">
+              {result.entry.notes.map((n, i) => (<p key={i} className="text-[11px] text-muted-foreground leading-relaxed">• {n}</p>))}
             </div>
           )}
         </div>

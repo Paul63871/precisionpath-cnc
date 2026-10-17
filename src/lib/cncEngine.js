@@ -4,6 +4,8 @@ import {
   TAP_SFM_BY_CLASS, TAP_TOOL_MATERIAL_MULT, TAP_STYLES, HOLE_TYPES, THREAD_TABLE,
   WORKHOLDING_JAW_TYPES, tapDrillSize, baseChipLoad, lerp, clamp,
   RADIUS_ENGAGEMENTS, RADIUS_CUTTER_SFM, RADIUS_PASS_SCHEDULE, radiusPassCount, classRefMid,
+  RAMP_ANGLE_BY_CLASS, RAMP_ANGLE_DEFAULT, ENTRY_FEED_FACTOR,
+  HELIX_DIA_DEFAULT_MULT, HELIX_DIA_MIN_MULT, HELIX_DIA_PRACTICAL_MULT, HELIX_DIA_SLUG_MULT,
 } from "./cncData";
 
 // input shape:
@@ -16,6 +18,8 @@ import {
 //   jawTypeId — optional: WORKHOLDING_JAW_TYPES id, selects friction coefficient,
 //   priority — "finish" | "balanced" | "speed" (default balanced = IMCO-benchmark behaviour),
 //   featureDiameter (in) — bore/pocket/boss diameter for circular ops; pilotDiameter (in) — pilot hole for helical bore,
+//   entryMethod — "helix" | "ramp" | "plunge" | "predrilled" (how the tool first enters solid in pocket/slot/bore ops),
+//   helixDiameter (in) — programmed helix HOLE diameter for helical entry (default 1.2 x tool),
 //   targetRa (µin) — finish target that drives ball-nose scallop stepover / feed-mark cap,
 //   clampForce (lbf) — optional: the vise/fixture's actual rated clamping force,
 //   used to give a direct pass/fail instead of just reporting the requirement }
@@ -26,7 +30,7 @@ export function calculate(input) {
     leadAngle, cornerRadius, includedAngle, tipDiameter, thickness, neckDiameter, pointAngle,
     radialLoad, axialDoc, featureDepth, threadId, tapStyle, holeType, gripDepth,
     jawTypeId, clampForce,
-    priority, featureDiameter, pilotDiameter, targetRa, radiusEngagement, insertIc,
+    priority, featureDiameter, pilotDiameter, targetRa, radiusEngagement, insertIc, entryMethod, helixDiameter,
   } = input;
 
   const mat = material || PART_MATERIALS.find((m) => m.id === materialId) || PART_MATERIALS[0];
@@ -193,6 +197,7 @@ export function calculate(input) {
       sfm: Math.round(sfm),
       rpm: Math.round(rpm),
       chipLoad: tapping.pitch || 0,
+      feedPerRev: tapping.pitch || 0, // tap feed per rev is locked to thread pitch
       programmedFpt: null,
       ipm: Number(ipm.toFixed(2)),
       woc: Number(tapMajor.toFixed(3)),
@@ -909,6 +914,125 @@ export function calculate(input) {
     };
   }
 
+  // --- Entry into stock (helical ramp / linear ramp / plunge) ---
+  // Starting a pocket, slot or bore with the SAME end mill means the tool is
+  // buried: chip thickness = fz (a slot-like cut, no radial chip thinning), so
+  //   * ramp angle follows the material class (Harvey/Helical 1-3 deg ferrous,
+  //     3-10 deg non-ferrous; stainless/Ti/superalloy 1-2 deg),
+  //   * helix pitch per orbit = PI x pathD x tan(angle), never more than the
+  //     axial DOC (Sandvik: pitch can never exceed max ap),
+  //   * entry feed = 50% of normal fz (Harvey: reduce at least 50% until fully
+  //     engaged; Sandvik linear ramp 75%, 2-axis ramping -30..-50%),
+  //   * spindle RPM unchanged (CNCCookbook: no reason to change RPM on a ramp),
+  //   * programmed helix feed acts on the tool CENTERLINE:
+  //     F_cl = F_edge x (D_hole - D_tool) / D_hole (Kennametal ID interpolation).
+  // Two different "per rev" numbers exist and are reported separately:
+  //   pitchPerOrbit  = Z drop per ONE lap around the helix path circle,
+  //   axialIprSpindle = Z drop per SPINDLE revolution (= Z feed / RPM).
+  // https://www.harveyperformance.com/in-the-loupe/ramping-success/
+  // https://www.harveyperformance.com/in-the-loupe/types-tool-entry/
+  // https://www.sandvik.coromant.com/en-us/knowledge/milling/milling-holes-cavities-pockets/ramping
+  // https://www1.mscdirect.com/images/solutions/kennametal/millingTechInfoInterpolation.pdf
+  const ENTRY_OP_IDS = ["2d_pocket", "2d_adaptive_rough", "2d_circular_pocket", "2d_bore_rough", "bore", "slotting", "3d_pocket", "3d_adaptive_rough"];
+  const entryWarn = [];
+  let entry = null;
+  const isFormCutter = !!tt.radiusKind || ["chamfer", "slitting_saw", "t_slot", "drill", "tap"].includes(tt.id);
+  if (ENTRY_OP_IDS.includes(baseOp.id) && !tt.isDrill && !tt.isTap) {
+    if (isFormCutter) {
+      if (tt.radiusKind || tt.id === "chamfer") entryWarn.push(`${tt.name}: do not ramp, helix or plunge a form/radius cutter into solid — pre-drill or start from open air and enter from the side (Harvey: radius and chamfer cutters are not center-cutting plunge tools).`);
+    } else {
+      const matClass = mat.materialClass;
+      const band = (matClass && RAMP_ANGLE_BY_CLASS[matClass]) || RAMP_ANGLE_DEFAULT;
+      const fin = Number.isFinite(aggQ) ? aggQ : 0.6;
+      const rampDeg = Number((band.lo + (band.hi - band.lo) * clamp(fin, 0, 1) * 0.6).toFixed(1));
+      const tanA = Math.tan(rampDeg * Math.PI / 180);
+      const pre = (baseOp.circularKind === "bore_rough" && pilotDiameter > 0);
+      let method = ["helix", "ramp", "plunge", "predrilled"].includes(entryMethod) ? entryMethod : null;
+      if (pre) method = "predrilled";
+      if (!method) method = (baseOp.id === "slotting") ? "ramp" : "helix";
+      const D = diameter;
+      const insertTool = tt.countField === "inserts";
+      const centerCutting = !insertTool && tt.id !== "face_mill";
+      const entryDepth = (baseOp.circularKind === "bore_rough")
+        ? ((featureDepth && featureDepth > 0) ? featureDepth : doc)
+        : Math.min(doc, (featureDepth && featureDepth > 0) ? featureDepth : doc);
+      const fzEntry = chipLoad * (ENTRY_FEED_FACTOR[method] || 0.5);
+      entry = {
+        method, rampAngleDeg: rampDeg, rampBand: [band.lo, band.hi], rampBandSource: band.src,
+        rampAngleEstimate: !!band.estimate, entryDepth: Number(entryDepth.toFixed(4)), notes: [],
+      };
+      if (method === "predrilled") {
+        entry.notes.push(pre ? "Pilot hole entered: the tool enters the existing hole, so no helix/ramp feed reduction applies at the start. Feed the first axial move only into open pilot." : "Pre-drilled / side entry: no ramp is programmed. Enter from a drilled hole at least 1.2x the cutter diameter, or from open air with an arc lead-in (Harvey: arcing enters from the side and ramps load gradually).");
+      } else if (D > 0 && rpm > 0 && flutes > 0) {
+        const entryIpmEdge = Math.min(rpm * flutes * fzEntry, m.maxIpm);
+        entry.entryFpt = Number(fzEntry.toFixed(5));
+        entry.entryFeedFactor = ENTRY_FEED_FACTOR[method];
+        entry.rpm = Math.round(rpm);
+        entry.entryEdgeIpm = Number(entryIpmEdge.toFixed(1));
+        entry.feedPerRev = Number((entryIpmEdge / rpm).toFixed(5));
+        if (insertTool) entryWarn.push("Indexable cutter: maximum ramp angle depends on the insert radius and body (Sandvik) — check the catalog ramp limit; for round inserts keep the ramp at 1-2 deg. Entry feed is the solid-carbide default; Sandvik uses 75% of normal for linear ramps with inserts.");
+        if (method === "helix") {
+          const userHelix = (helixDiameter > 0 && Number.isFinite(helixDiameter));
+          let hole;
+          const Dh = (featureDiameter > 0 && Number.isFinite(featureDiameter)) ? featureDiameter : null;
+          if (userHelix) hole = helixDiameter;
+          else if (op.circular && Dh && Dh <= D * HELIX_DIA_SLUG_MULT) hole = Dh;
+          else hole = D * HELIX_DIA_DEFAULT_MULT;
+          if (hole < D * HELIX_DIA_MIN_MULT) {
+            entryWarn.push(`Helix hole Ø${hole.toFixed(3)}\" is below ${HELIX_DIA_MIN_MULT}x the cutter — the tool cannot orbit; using ${(D * HELIX_DIA_MIN_MULT).toFixed(3)}\". Use a hole of ${(D * HELIX_DIA_PRACTICAL_MULT).toFixed(3)}\" or more (carbide-tooling.com helical interpolation guide).`);
+            hole = D * HELIX_DIA_MIN_MULT;
+          } else if (hole < D * HELIX_DIA_PRACTICAL_MULT - 1e-9) {
+            entryWarn.push(`Helix hole is only ${(hole / D).toFixed(2)}x the cutter — below 1.2x chips pack and re-cut; Harvey/Helical recommend a helix 110-120%+ of the cutter diameter, Global Cutting Tools 115-130%.`);
+          }
+          if (hole > D * HELIX_DIA_SLUG_MULT + 1e-9) {
+            entryWarn.push(`Helix hole Ø${hole.toFixed(3)}\" is more than 2x the cutter — it leaves a Ø${(hole - 2 * D).toFixed(3)}\" core slug that can jam or break the tool (Sandvik: max hole in one spiral = 2 x D). Use a smaller helix and clear the rest with the pocket pass.`);
+          }
+          const pathD = Math.max(hole - D, 0.001);
+          const pitchMax = Math.PI * pathD * tanA;
+          const pitch = Math.min(doc, pitchMax);
+          const actualDeg = Math.atan(pitch / (Math.PI * pathD)) * 180 / Math.PI;
+          const factor = Math.max(0.02, (hole - D) / hole);
+          const cl = entryIpmEdge * factor;
+          const orbitsPerMin = cl / (Math.PI * pathD);
+          entry.helixHoleDia = Number(hole.toFixed(4));
+          entry.helixHoleMult = Number((hole / D).toFixed(2));
+          entry.pathDia = Number(pathD.toFixed(4));
+          entry.pitchPerOrbit = Number(pitch.toFixed(4));
+          entry.rampAngleDeg = Number(actualDeg.toFixed(1));
+          entry.turns = Math.max(1, Math.ceil(entryDepth / Math.max(pitch, 1e-6)));
+          entry.centerlineFactor = Number(factor.toFixed(3));
+          entry.rampFeed = Number(cl.toFixed(1));
+          entry.axialFeedIpm = Number((pitch * orbitsPerMin).toFixed(2));
+          entry.axialIprSpindle = Number((pitch * orbitsPerMin / rpm).toFixed(5));
+          if (pitch < doc * 0.999 && actualDeg < rampDeg + 0.05) entry.notes.push(`Pitch ${pitch.toFixed(4)}\" per orbit (${rampDeg}° on a Ø${pathD.toFixed(3)}\" path circle) is shallower than the ${doc.toFixed(3)}\" step-down — it takes ${entry.turns} turns to reach ${entryDepth.toFixed(3)}\".`);
+          if (actualDeg < rampDeg - 0.05) entry.notes.push(`Pitch capped at the axial depth of cut (${doc.toFixed(3)}\"), which is a ${actualDeg.toFixed(1)}° ramp on this path circle (Sandvik: pitch never larger than max ap).`);
+          entry.notes.push("Program the helix counter-clockwise (G3) for climb milling (Sandvik). Helix feed shown is the tool-centerline feed; with cutter radius compensation use the edge feed instead. Path-length difference of a helix vs. its XY arc is under 2% for ramps up to 10°.");
+          entry.notes.push("Prefer a corner-radius end mill for helical entry — the radius survives the bottom-corner load better than a sharp square corner (Harvey/Helical).");
+        } else if (method === "ramp") {
+          entry.rampFeed = Number(entryIpmEdge.toFixed(1));
+          entry.axialFeedIpm = Number((entryIpmEdge * tanA).toFixed(2));
+          entry.axialIprSpindle = Number((entryIpmEdge * tanA / rpm).toFixed(5));
+          entry.rampLength = Number((entryDepth / tanA).toFixed(3));
+          entry.notes.push(`Linear ramp is a full-width slot cut (Sandvik: circular ramping is always preferred). It needs ${entry.rampLength}\" of travel to drop ${entryDepth.toFixed(3)}\" at ${rampDeg}° — ramp back and forth (progressive ramping) if the pocket is shorter.`);
+          entry.notes.push("After the ramp, keep the reduced feed for about one cutter diameter of travel until the tool is fully engaged (Sandvik).");
+        } else if (method === "plunge") {
+          const plungeIpr = chipLoad * flutes * ENTRY_FEED_FACTOR.plunge;
+          const plungeIpm = Math.min(plungeIpr * rpm, m.maxIpm);
+          entry.plungeIpr = Number((plungeIpm / rpm).toFixed(5));
+          entry.plungeIpm = Number(plungeIpm.toFixed(1));
+          entry.rampFeed = entry.plungeIpm;
+          entry.axialFeedIpm = entry.plungeIpm;
+          entry.axialIprSpindle = entry.plungeIpr;
+          entry.notes.push("Plunge feed = 50% of the normal chip load per revolution (Harvey: plunge chip load -50%). Use only center-cutting end mills; ramping or helixing is gentler and gives smaller, easier-to-clear chips.");
+          if (!centerCutting) entryWarn.push("This cutter is not center-cutting — do NOT plunge it. Use a helical ramp into a pre-drilled hole.");
+        }
+        if (matClass === "plastic" || matClass === "wood") entry.notes.push("Single-flute / O-flute tools evacuate the ramp chip best in plastics and wood; keep the ramp feed up so the chip carries the heat away rather than melting.");
+        if (matClass === "composite" || matClass === "phenolic") entry.notes.push("Laminate: a steep ramp or plunge pushes the plies apart and delaminates the entry. Keep the ramp shallow and use a sharp, diamond-coated or carbide tool.");
+        if (band.estimate) entry.notes.push(`ESTIMATE: no manufacturer publishes a ramp band for this material class; ${band.lo}-${band.hi}° was chosen inside the published non-ferrous/ferrous band (${band.src}).`);
+      }
+    }
+  }
+
   // --- Circular features (bore / circular pocket / boss) ---
   // The programmed G2/G3 feed acts on the TOOL CENTERLINE, but the chip load
   // is set at the CUTTING EDGE. Internal: the edge travels on a LARGER circle
@@ -943,18 +1067,12 @@ export function calculate(input) {
         if (op.solidStart && Dh > diameter * 2 + 1e-9) {
           circWarn.push(`Opening Ø${Dh}" from solid with a Ø${diameter}" tool leaves a Ø${(Dh - 2 * diameter).toFixed(3)}" core slug — it will loosen and jam or drop into the cutter. Enter a pilot hole diameter, add ring passes, or drill it out first.`);
         }
-        // Helical entry: axial pitch per revolution capped by a 3 deg ramp (the low
-        // end of the 3-5 deg end-mill helix limit, carbide-tooling.com) on the path circle.
-        if (baseOp.circularKind === "bore_rough" || baseOp.circularKind === "pocket_rough") {
-          const pathD = Math.max(Dh - diameter, 0.001);
-          const pitchMax = Math.PI * pathD * Math.tan(3 * Math.PI / 180);
-          const pitch = Math.min(doc, pitchMax);
-          const rampDeg = Math.atan(pitch / (Math.PI * pathD)) * 180 / Math.PI;
-          circular.helixPitch = Number(pitch.toFixed(4));
-          circular.rampAngleDeg = Number(rampDeg.toFixed(1));
-          const depthForHelix = featureDepth && featureDepth > 0 ? featureDepth : doc;
-          circular.helixTurns = Math.max(1, Math.ceil(depthForHelix / pitch));
-          if (pitch < doc * 0.999) circular.notes.push(`Helical pitch limited to ${pitch.toFixed(4)}" per revolution (3° ramp on a Ø${pathD.toFixed(3)}" path circle) — the cut is shallower per turn than the ${doc.toFixed(3)}" step-down because the hole is small relative to the tool.`);
+        // Helical entry (pitch, ramp angle, turns) comes from the shared entry
+        // model above (class-based ramp angle, pitch <= axial DOC).
+        if ((baseOp.circularKind === "bore_rough" || baseOp.circularKind === "pocket_rough") && entry && entry.method === "helix" && entry.pitchPerOrbit != null) {
+          circular.helixPitch = entry.pitchPerOrbit;
+          circular.rampAngleDeg = entry.rampAngleDeg;
+          circular.helixTurns = entry.turns;
         }
         // Radial ring passes
         if (baseOp.circularKind === "pocket_rough") {
@@ -1032,7 +1150,7 @@ export function calculate(input) {
   }
 
   // --- Warnings ---
-  const warnings = [...thinningNotes, ...circWarn];
+  const warnings = [...thinningNotes, ...circWarn, ...entryWarn];
   if (mat.notes && mat.notes.length) for (const n of mat.notes) warnings.push(`${mat.name}: ${n}`);
   if (mat.abrasive && (tm.id === "hss" || tm.id === "cobalt")) warnings.push(`${mat.name} is abrasive — ${tm.name} will wear very quickly; use solid carbide (diamond-coated or PCD for production).`);
   if (mat.materialClass === "phenolic" && (tm.id === "hss" || tm.id === "cobalt")) warnings.push(`${mat.name}: ${tm.name} is viable only for low volume (< ~20 parts per operation) on paper/cotton phenolic — carbide (uncoated C-2, sharp, polished flutes) is the standard and holds life far longer. A dulling tool raises heat, which drives formaldehyde off-gassing and edge chipping (Ready Plastics phenolic guide). Speeds shown use an estimated HSS derate.`);
@@ -1101,6 +1219,8 @@ export function calculate(input) {
     circular,
     finishPlan,
     deflection,
+    entry,
+    feedPerRev: (rpm > 0 && isFinite(ipm)) ? Number((ipm / rpm).toFixed(5)) : null,
     warnings,
   };
 }

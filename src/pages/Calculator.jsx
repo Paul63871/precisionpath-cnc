@@ -61,7 +61,7 @@ export default function Calculator() {
   const [saveName, setSaveName] = useState("");
   const [saving, setSaving] = useState(false);
   const [override, setOverride] = useState(null);
-  const [adaptive, setAdaptive] = useState({ radialLoad: 0, axialDoc: 0, featureDepth: 0, fineStepup: 0, gripDepth: 0, jawTypeId: "smooth_steel", clampForce: 0, featureDiameter: 0, pilotDiameter: 0, targetRa: 0 });
+  const [adaptive, setAdaptive] = useState({ radialLoad: 0, axialDoc: 0, featureDepth: 0, fineStepup: 0, gripDepth: 0, jawTypeId: "smooth_steel", clampForce: 0, featureDiameter: 0, pilotDiameter: 0, targetRa: 0, entryMethod: "", helixDiameter: 0 });
   const [showViseLookup, setShowViseLookup] = useState(false);
   const [prefId, setPrefId] = useState(null);
 
@@ -133,7 +133,7 @@ export default function Calculator() {
       threadId: tool.threadId, tapStyle: tool.tapStyle, pitch: tool.pitch, holeType: tool.holeType,
       gripDepth: adaptive.gripDepth,
       jawTypeId: adaptive.jawTypeId, clampForce: adaptive.clampForce,
-      priority, featureDiameter: adaptive.featureDiameter, pilotDiameter: adaptive.pilotDiameter, targetRa: adaptive.targetRa,
+      priority, featureDiameter: adaptive.featureDiameter, pilotDiameter: adaptive.pilotDiameter, targetRa: adaptive.targetRa, entryMethod: adaptive.entryMethod || undefined, helixDiameter: adaptive.helixDiameter,
     });
   }, [tool, selectedMaterial, operationId, aggressiveness, machine, override, adaptive, priority]);
 
@@ -227,6 +227,38 @@ export default function Calculator() {
                     <p className="text-[11px] text-muted-foreground leading-relaxed">
                       Needed for the circular-interpolation feed correction: the feed you program on a G2/G3 arc acts on the tool centerline, not the cutting edge.
                       {selectedOp.circularKind === "bore_rough" && " Leave the pilot blank to helix down from solid; enter it to size the ring passes."}
+                    </p>
+                  </div>
+                )}
+                {selectedOp && ["2d_pocket", "2d_adaptive_rough", "2d_circular_pocket", "2d_bore_rough", "bore", "slotting", "3d_pocket", "3d_adaptive_rough"].includes(selectedOp.id) && (
+                  <div className="space-y-1.5 col-span-2 rounded-lg border border-border bg-muted/30 p-3">
+                    <Label className="text-xs font-semibold text-foreground">Entry into stock</Label>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1.5">
+                        <Label className="text-xs text-muted-foreground">How the tool starts the cut</Label>
+                        <ResponsiveSelect
+                          className="h-9"
+                          value={adaptive.entryMethod || "auto"}
+                          onValueChange={(v) => setAdaptive((a) => ({ ...a, entryMethod: v === "auto" ? "" : v }))}
+                          options={[
+                            { value: "auto", label: selectedOp.id === "slotting" ? "Auto (linear ramp)" : "Auto (helical ramp)" },
+                            { value: "helix", label: "Helical ramp (helix down)" },
+                            { value: "ramp", label: "Linear ramp" },
+                            { value: "plunge", label: "Plunge (center-cutting only)" },
+                            { value: "predrilled", label: "Pre-drilled / side entry" },
+                          ]}
+                          placeholder="Entry method"
+                        />
+                      </div>
+                      {(adaptive.entryMethod === "helix" || !adaptive.entryMethod) && selectedOp.id !== "slotting" && (
+                        <div className="space-y-1.5">
+                          <Label className="text-xs text-muted-foreground">Helix hole Ø ({UNITS[units].length})</Label>
+                          <NumberField className="h-9" allowClear placeholder="Auto (1.2× tool)" value={adaptive.helixDiameter ? lenFromImp(adaptive.helixDiameter, units) : undefined} onValueChange={(n) => setAdaptive((a) => ({ ...a, helixDiameter: n ? lenToImp(n, units) : 0 }))} />
+                        </div>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-muted-foreground leading-relaxed">
+                      When the same end mill starts the pocket, slot or bore, it is buried in solid: the ramp angle follows the material, the entry feed is cut to 50% of normal, and a helix feed is corrected to the tool centerline. Helix hole should be 1.2× the cutter or more.
                     </p>
                   </div>
                 )}

@@ -657,6 +657,57 @@ export const PERIPHERAL_ROUGH_WOC_TARGETS = {
 // apply on top via TAP_TOOL_MATERIAL_MULT, same pattern as milling's
 // TOOL_MATERIAL_CLASS_MULT. Keyed by the same materialClass already on every
 // PART_MATERIALS entry so no new per-material data entry is needed.
+// ---------------------------------------------------------------------------
+// HELICAL / RAMP / PLUNGE ENTRY (starting a pocket, slot or bore from solid)
+// ---------------------------------------------------------------------------
+// Ramp angle bands [low, high] in degrees by material class.
+//   Harvey Performance / Helical Solutions "Ramping to Success": suggested
+//     starting ramp angles - hard/ferrous 1-3 deg, soft/non-ferrous 3-10 deg:
+//     https://www.harveyperformance.com/in-the-loupe/ramping-success/
+//   Global Cutting Tools Machining Methods: ferrous 1-3 deg, non-ferrous 3-10:
+//     https://globalcuttingtools.com/wp-content/uploads/2014/10/Machining_Methods.pdf
+//   Stainless / titanium / superalloy: 1-2 deg (Anebon helical-interpolation
+//     guide; low end of Harvey's ferrous band because of work hardening):
+//     https://m.anebon.com/news/cnc-milling-helical-interpolation-mastery-circular-ramping-for-precision-holes-and-tool-life-extension
+// ESTIMATE flags: where no manufacturer publishes a class-specific band the
+// range is chosen INSIDE the published ferrous / non-ferrous band
+// (composite / phenolic / plastic: conservative part of the non-ferrous band
+// because laminates delaminate and thermoplastics melt under a steep ramp).
+export const RAMP_ANGLE_BY_CLASS = {
+  steel_mild:      { lo: 2,   hi: 3,  src: "Harvey ferrous 1-3 deg" },
+  steel_alloy:     { lo: 1.5, hi: 3,  src: "Harvey ferrous 1-3 deg" },
+  cast_iron:       { lo: 2,   hi: 3,  src: "Harvey ferrous 1-3 deg" },
+  stainless:       { lo: 1,   hi: 2,  src: "Anebon 1-2 deg" },
+  titanium:        { lo: 1,   hi: 2,  src: "Anebon 1-2 deg" },
+  superalloy:      { lo: 1,   hi: 2,  src: "Anebon 1-2 deg" },
+  aluminum:        { lo: 3,   hi: 10, src: "Harvey non-ferrous 3-10 deg" },
+  nonferrous_soft: { lo: 3,   hi: 8,  src: "Harvey non-ferrous 3-10 deg", estimate: true },
+  plastic:         { lo: 3,   hi: 8,  src: "Harvey non-ferrous 3-10 deg (conservative top end)", estimate: true },
+  wood:            { lo: 3,   hi: 8,  src: "Harvey non-ferrous 3-10 deg (conservative top end)", estimate: true },
+  composite:       { lo: 2,   hi: 5,  src: "conservative inside Harvey non-ferrous band", estimate: true },
+  phenolic:        { lo: 2,   hi: 5,  src: "conservative inside Harvey non-ferrous band", estimate: true },
+};
+export const RAMP_ANGLE_DEFAULT = { lo: 1, hi: 3, src: "Harvey ferrous 1-3 deg (unknown class: conservative)", estimate: true };
+
+// Entry feed as a fraction of the normal chip load (fz) while the tool is
+// buried (slot-like, full-width engagement) before it is fully engaged:
+//   Harvey/Helical "Types of Tool Entry": reduce feed on entry by AT LEAST 50%
+//   (plunge: reduce chip load by 50%):
+//   https://www.harveyperformance.com/in-the-loupe/types-tool-entry/
+//   Sandvik Coromant: linear ramping 75% of normal feed (inserted cutters);
+//   Sandvik catalog 2-axis ramping -30..-50%. 0.5 is used for solid-carbide
+//   end mills (the more conservative published figure).
+export const ENTRY_FEED_FACTOR = { helix: 0.5, ramp: 0.5, plunge: 0.5 };
+
+// Programmed helix HOLE diameter relative to the cutter: Harvey/Helical advise
+// a helix larger than ~110-120% of the cutter, Global Cutting Tools 115-130%;
+// carbide-tooling.com: >= 1.05x to enter at all, >= 1.2x for chip evacuation.
+export const HELIX_DIA_DEFAULT_MULT = 1.2;
+export const HELIX_DIA_MIN_MULT = 1.05;
+export const HELIX_DIA_PRACTICAL_MULT = 1.2;
+// Larger than 2x the cutter leaves an uncut core slug (Sandvik: max hole in one spiral = 2 x D).
+export const HELIX_DIA_SLUG_MULT = 2.0;
+
 export const TAP_SFM_BY_CLASS = {
   aluminum:        [40, 70],   // Viking 60-80, ARM 70-90, Magotan 60-90 (aluminum alloys)
   nonferrous_soft: [40, 90],   // brass/bronze/copper — Viking 30-100, Magotan-style free-machining range
