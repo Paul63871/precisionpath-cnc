@@ -160,8 +160,8 @@ export default function Calculator() {
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8">
-      <div className="mb-6 flex items-start justify-between gap-3">
-        <div>
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0 flex-1 basis-56">
           <h1 className="text-2xl font-bold tracking-tight">Calculator</h1>
           <p className="text-sm text-muted-foreground mt-0.5">Physics-based feeds &amp; speeds for any tool and material.</p>
         </div>

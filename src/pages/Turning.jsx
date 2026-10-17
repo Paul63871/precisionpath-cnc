@@ -4,6 +4,7 @@ import { base44 } from "@/api/base44Client";
 import MachineForm from "@/components/cnc/MachineForm";
 import MaterialSearch from "@/components/cnc/MaterialSearch";
 import ResponsiveSelect from "@/components/cnc/ResponsiveSelect";
+import ToolIcon from "@/components/cnc/ToolIcon";
 import UnitsToggle from "@/components/cnc/UnitsToggle";
 import NumberField from "@/components/NumberField";
 import { Label } from "@/components/ui/label";
@@ -96,7 +97,7 @@ export default function Turning() {
     });
   }, [mat, operationId, gradeId, aggressiveness, priority, work, insert, machine, chuckMaxRpm, hold, bar, groove, thread]);
 
-  const opOptions = TURNING_OPERATIONS.map((o) => ({ value: o.id, label: o.name, group: o.group }));
+  const opOptions = TURNING_OPERATIONS.map((o) => ({ value: o.id, label: o.name, group: o.group, icon: <ToolIcon kind="turnop" id={o.kind} className="w-9 h-9" /> }));
   const needsFinishDia = op.kind === "od" || op.kind === "id";
   const showInsert = !["drill"].includes(op.kind);
   const isThread = op.kind === "thread";
@@ -137,7 +138,7 @@ export default function Turning() {
                 <>
                   <div className="space-y-1.5 col-span-2">
                     <Label className="text-xs text-muted-foreground">Insert Shape</Label>
-                    <ResponsiveSelect value={insert.shapeId} onValueChange={(v) => setInsert((i) => ({ ...i, shapeId: v }))} options={INSERT_SHAPES.map((s) => ({ value: s.id, label: s.name }))} />
+                    <ResponsiveSelect value={insert.shapeId} onValueChange={(v) => setInsert((i) => ({ ...i, shapeId: v }))} options={INSERT_SHAPES.map((s) => ({ value: s.id, label: s.name, icon: <ToolIcon kind="insert" id={s.id} className="w-9 h-9" /> }))} />
                   </div>
                   <div className="space-y-1.5">
                     <Label className="text-xs text-muted-foreground">Inscribed Circle (IC)</Label>
@@ -215,7 +216,7 @@ export default function Turning() {
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5 col-span-2">
                   <Label className="text-xs text-muted-foreground">Bar Type</Label>
-                  <ResponsiveSelect value={bar.id} onValueChange={(v) => setBar((b) => ({ ...b, id: v }))} options={BORING_BARS.map((b) => ({ value: b.id, label: `${b.name} (max ${b.maxLD}× Ø)` }))} />
+                  <ResponsiveSelect value={bar.id} onValueChange={(v) => setBar((b) => ({ ...b, id: v }))} options={BORING_BARS.map((b) => ({ value: b.id, label: `${b.name} (max ${b.maxLD}× Ø)`, icon: <ToolIcon kind="bar" id={b.id} className="w-10 h-10" /> }))} />
                 </div>
                 <LenField label="Bar Ø" value={bar.diameter} onChange={(n) => setBar((b) => ({ ...b, diameter: n ? lenToImp(n, units) : 0.5 }))} />
                 <LenField label="Overhang" value={bar.overhang} onChange={(n) => setBar((b) => ({ ...b, overhang: n ? lenToImp(n, units) : 1 }))} />

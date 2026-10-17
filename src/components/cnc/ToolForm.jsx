@@ -6,6 +6,23 @@ import { UNITS, lenFromImp, lenToImp } from "@/lib/units";
 import NumberField from "@/components/NumberField";
 import TapDrillDialog from "@/components/cnc/TapDrillDialog";
 import { Drill } from "lucide-react";
+import ToolIcon from "@/components/cnc/ToolIcon";
+
+const TOOL_BLURB = {
+  end_mill: "Flat-bottom cutter for slotting, pockets and profiling.",
+  ball_end: "Full-radius tip for 3D surfacing and fillets.",
+  bull_nose: "Flat end with corner radius: stronger corners, smoother floors.",
+  corner_round: "Form cutter that puts a radius on an outside edge.",
+  concave_radius: "Large-radius profile that cuts concave fillets and coves.",
+  round_insert: "Indexable round-insert cutter for copy milling and radius work.",
+  roughing: "Serrated (corn-cob) flutes break chips for heavy roughing.",
+  chamfer: "Angled V-bit for chamfers, deburring and engraving.",
+  face_mill: "Indexable face mill for wide, flat surfaces.",
+  drill: "Twist drill; feed is per revolution.",
+  tap: "Cuts or forms internal threads; feed equals thread pitch.",
+  slitting_saw: "Thin disc saw for deep slots and cut-off.",
+  t_slot: "Neck and wide head to cut T-slots from an open slot.",
+};
 
 export default function ToolForm({ value, onChange, units = "imperial" }) {
   const set = (k, v) => onChange({ ...value, [k]: v });
@@ -102,7 +119,7 @@ export default function ToolForm({ value, onChange, units = "imperial" }) {
           <ResponsiveSelect
             value={value.tapStyle || "spiral_point"}
             onValueChange={(v) => set("tapStyle", v)}
-            options={TAP_STYLES.map((t) => ({ value: t.id, label: t.name }))}
+            options={TAP_STYLES.map((t) => ({ value: t.id, label: t.name, icon: <ToolIcon kind="tap" id={t.id} className="w-8 h-8" /> }))}
           />
           {mismatch && (
             <p className="text-xs text-destructive pt-0.5">Spiral point taps push chips forward — not for blind holes. Pick Spiral Flute or Forming/Roll instead.</p>
@@ -124,9 +141,15 @@ export default function ToolForm({ value, onChange, units = "imperial" }) {
         <div className="space-y-1.5">
           <Label className="text-xs text-muted-foreground">Tool Type</Label>
           <ResponsiveSelect
+            showIconInTrigger={false}
             value={value.toolTypeId}
-            onValueChange={(v) => set("toolTypeId", v)}
-            options={TOOL_TYPES.map((t) => ({ value: t.id, label: t.name }))}
+            onValueChange={(v) => {
+              // Taps are only made in HSS / cobalt here; keep the tool material valid when switching.
+              const nt = TOOL_TYPES.find((t) => t.id === v);
+              const badTapMat = nt && nt.isTap && value.toolMaterialId !== "hss" && value.toolMaterialId !== "cobalt";
+              onChange({ ...value, toolTypeId: v, ...(badTapMat ? { toolMaterialId: "hss" } : {}) });
+            }}
+            options={TOOL_TYPES.map((t) => ({ value: t.id, label: t.name, icon: <ToolIcon kind="tool" id={t.id} className="w-8 h-8" /> }))}
           />
         </div>
         <div className="space-y-1.5">
@@ -136,6 +159,13 @@ export default function ToolForm({ value, onChange, units = "imperial" }) {
             onValueChange={(v) => set("toolMaterialId", v)}
             options={(isTap ? TOOL_MATERIALS.filter((t) => t.id === "hss" || t.id === "cobalt") : TOOL_MATERIALS).map((t) => ({ value: t.id, label: t.name }))}
           />
+        </div>
+      </div>
+      <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/30 px-3 py-2">
+        <ToolIcon kind={isTap ? "tap" : "tool"} id={isTap ? (value.tapStyle || "spiral_point") : toolType.id} className="w-14 h-14" title={toolType.name} />
+        <div className="min-w-0">
+          <div className="text-sm font-medium leading-tight break-words">{toolType.name}</div>
+          <div className="text-[11px] text-muted-foreground leading-snug">{TOOL_BLURB[toolType.id] || ""}</div>
         </div>
       </div>
       {isTap ? (

@@ -21,9 +21,20 @@ function groupOptions(options) {
   return groups;
 }
 
+// Option label with an optional leading icon (e.g. a tool illustration).
+function OptionLabel({ o }) {
+  if (!o.icon) return <span className="min-w-0 break-words">{o.label}</span>;
+  return (
+    <span className="flex min-w-0 items-center gap-2.5">
+      <span className="shrink-0 flex items-center justify-center">{o.icon}</span>
+      <span className="min-w-0 break-words">{o.label}</span>
+    </span>
+  );
+}
+
 // Touch-friendly select: shadcn Select on desktop, a Vaul bottom-drawer picker on
 // mobile. Same API regardless of which renders: { value, onValueChange, options }.
-export default function ResponsiveSelect({ value, onValueChange, options = [], placeholder, className }) {
+export default function ResponsiveSelect({ value, onValueChange, options = [], placeholder, className, showIconInTrigger = true }) {
   const isMobile = useIsMobile();
   const [open, setOpen] = useState(false);
   const selected = options.find((o) => o.value === value);
@@ -32,8 +43,10 @@ export default function ResponsiveSelect({ value, onValueChange, options = [], p
   if (!isMobile) {
     return (
       <Select value={value} onValueChange={onValueChange}>
-        <SelectTrigger className={cn("h-11 min-h-[44px]", className)}>
-          <SelectValue placeholder={placeholder} />
+        <SelectTrigger className={cn("h-auto min-h-[44px] py-1.5", className)}>
+          <SelectValue placeholder={placeholder}>
+            {!showIconInTrigger && selected ? <span className="truncate">{selected.label}</span> : undefined}
+          </SelectValue>
         </SelectTrigger>
         <SelectContent>
           {groups.map((g, gi) =>
@@ -41,13 +54,13 @@ export default function ResponsiveSelect({ value, onValueChange, options = [], p
               <SelectGroup key={g.label}>
                 <SelectLabel>{g.label}</SelectLabel>
                 {g.items.map((o) => (
-                  <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                  <SelectItem key={o.value} value={o.value}><OptionLabel o={o} /></SelectItem>
                 ))}
               </SelectGroup>
             ) : (
               <React.Fragment key={gi}>
                 {g.items.map((o) => (
-                  <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                  <SelectItem key={o.value} value={o.value}><OptionLabel o={o} /></SelectItem>
                 ))}
               </React.Fragment>
             )
@@ -64,12 +77,12 @@ export default function ResponsiveSelect({ value, onValueChange, options = [], p
           type="button"
           variant="outline"
           role="combobox"
-          className={cn("h-11 min-h-[44px] w-full justify-between font-normal", className)}
+          className={cn("h-auto min-h-[44px] w-full justify-between whitespace-normal font-normal py-1.5", className)}
         >
-          <span className={selected ? "" : "text-muted-foreground"}>
-            {selected ? selected.label : placeholder || "Select…"}
+          <span className={cn("flex min-w-0 flex-1 items-center gap-2 text-left", selected ? "" : "text-muted-foreground")}>
+            {selected ? <OptionLabel o={showIconInTrigger ? selected : { label: selected.label }} /> : (placeholder || "Select…")}
           </span>
-          <ChevronDown className="w-4 h-4 opacity-50" />
+          <ChevronDown className="w-4 h-4 opacity-50 shrink-0 ml-2" />
         </Button>
       </DrawerTrigger>
       <DrawerContent className="max-h-[80vh]">
@@ -89,8 +102,8 @@ export default function ResponsiveSelect({ value, onValueChange, options = [], p
                   onClick={() => { onValueChange(o.value); setOpen(false); }}
                   className="flex w-full items-center justify-between rounded-md px-3 py-3 text-sm min-h-[44px] text-left hover:bg-accent"
                 >
-                  <span>{o.label}</span>
-                  {o.value === value && <Check className="w-4 h-4 text-brand" />}
+                  <OptionLabel o={o} />
+                  {o.value === value && <Check className="w-4 h-4 text-brand shrink-0 ml-2" />}
                 </button>
               ))}
             </div>

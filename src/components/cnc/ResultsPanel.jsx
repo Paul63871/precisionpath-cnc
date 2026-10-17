@@ -54,12 +54,12 @@ export default function ResultsPanel({ result, units = "imperial" }) {
           <div className="rounded-md bg-muted px-3 py-2 font-mono text-[11px] leading-relaxed text-foreground overflow-x-auto whitespace-nowrap">
             {result.tapping.cycle} Z-{fmt(lenFromImp(result.tapping.threadDepth, units), 3)} R{fmt(lenFromImp(result.tapping.pitch ? result.tapping.pitch * 3 : 0.1, units), 3)} F{feedFromImp(result.ipm, units).toFixed(2)}
           </div>
-          <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
-            <div className="flex justify-between"><span className="text-muted-foreground">Thread Depth</span><span className="font-mono">{fmt(lenFromImp(result.tapping.threadDepth, units), 3)} {u.length} ({result.tapping.depthRatio}×D)</span></div>
-            <div className="flex justify-between"><span className="text-muted-foreground">Pitch</span><span className="font-mono">{result.tapping.pitch ? fmt(lenFromImp(result.tapping.pitch, units), 4) : "—"} {u.length}/rev{result.tapping.tpi ? ` (${result.tapping.tpi} TPI)` : ""}</span></div>
-            <div className="flex justify-between col-span-2"><span className="text-muted-foreground">Feed is pitch-locked</span><span className="font-mono">F = RPM × pitch (not adjustable)</span></div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+            <div className="flex justify-between"><span className="text-muted-foreground">Thread Depth</span><span className="font-mono text-right">{fmt(lenFromImp(result.tapping.threadDepth, units), 3)} {u.length} ({result.tapping.depthRatio}×D)</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">Pitch</span><span className="font-mono text-right">{result.tapping.pitch ? fmt(lenFromImp(result.tapping.pitch, units), 4) : "—"} {u.length}/rev{result.tapping.tpi ? ` (${result.tapping.tpi} TPI)` : ""}</span></div>
+            <div className="flex justify-between gap-3 sm:col-span-2"><span className="text-muted-foreground">Feed is pitch-locked</span><span className="font-mono text-right">F = RPM × pitch (not adjustable)</span></div>
             {result.tapping.tapDrill && (
-              <div className="flex justify-between col-span-2"><span className="text-muted-foreground">Tap Drill Size</span><span className="font-mono font-semibold text-brand">{result.tapping.tapDrill.display} (75% engagement)</span></div>
+              <div className="flex justify-between gap-3 sm:col-span-2"><span className="text-muted-foreground">Tap Drill Size</span><span className="font-mono font-semibold text-brand">{result.tapping.tapDrill.display} (75% engagement)</span></div>
             )}
           </div>
           {result.tapping.notes.length > 0 && (
@@ -80,16 +80,16 @@ export default function ResultsPanel({ result, units = "imperial" }) {
           <div className="rounded-md bg-muted px-3 py-2 font-mono text-[11px] leading-relaxed text-foreground overflow-x-auto whitespace-nowrap">
             {result.drilling.cycle} Z-{fmt(lenFromImp(result.drilling.holeDepth, units), 3)} R{fmt(lenFromImp(result.drilling.retract, units), 3)}{result.drilling.cycle === "G83" ? ` Q${fmt(lenFromImp(result.drilling.peckDepth, units), 3)} P${result.drilling.dwell.toFixed(1)}` : ""} F{feedFromImp(result.ipm, units).toFixed(1)}
           </div>
-          <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
-            <div className="flex justify-between"><span className="text-muted-foreground">Hole Depth</span><span className="font-mono">{fmt(lenFromImp(result.drilling.holeDepth, units), 3)} {u.length} ({result.drilling.depthRatio}×D)</span></div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+            <div className="flex justify-between"><span className="text-muted-foreground">Hole Depth</span><span className="font-mono text-right">{fmt(lenFromImp(result.drilling.holeDepth, units), 3)} {u.length} ({result.drilling.depthRatio}×D)</span></div>
             {result.drilling.cycle === "G83" ? (
               <>
-                <div className="flex justify-between"><span className="text-muted-foreground">Peck Depth (Q)</span><span className="font-mono">{fmt(lenFromImp(result.drilling.peckDepth, units), 3)} {u.length}</span></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">Pecks</span><span className="font-mono">{result.drilling.peckCount}</span></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">Retract (R)</span><span className="font-mono">{fmt(lenFromImp(result.drilling.retract, units), 3)} {u.length}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Peck Depth (Q)</span><span className="font-mono text-right">{fmt(lenFromImp(result.drilling.peckDepth, units), 3)} {u.length}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Pecks</span><span className="font-mono text-right">{result.drilling.peckCount}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Retract (R)</span><span className="font-mono text-right">{fmt(lenFromImp(result.drilling.retract, units), 3)} {u.length}</span></div>
               </>
             ) : (
-              <div className="flex justify-between col-span-2"><span className="text-muted-foreground">Pecks</span><span className="font-mono">1 (single plunge)</span></div>
+              <div className="flex justify-between gap-3 sm:col-span-2"><span className="text-muted-foreground">Pecks</span><span className="font-mono text-right">1 (single plunge)</span></div>
             )}
           </div>
           {result.drilling.notes.length > 0 && (
@@ -123,21 +123,21 @@ export default function ResultsPanel({ result, units = "imperial" }) {
               </div>
             </div>
           )}
-          <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
             {result.circular.centerlineFactor != null && result.circular.featureDiameter && (
-              <div className="flex justify-between col-span-2"><span className="text-muted-foreground">Centerline feed factor</span><span className="font-mono">{result.circular.centerlineFactor}× ({result.circular.internal ? "(Dfeature − Dtool) / Dfeature" : "(Dfeature + Dtool) / Dfeature"})</span></div>
+              <div className="flex justify-between gap-3 sm:col-span-2"><span className="text-muted-foreground">Centerline feed factor</span><span className="font-mono text-right">{result.circular.centerlineFactor}× ({result.circular.internal ? "(Dfeature − Dtool) / Dfeature" : "(Dfeature + Dtool) / Dfeature"})</span></div>
             )}
             {result.circular.pathDiameter != null && (
-              <div className="flex justify-between"><span className="text-muted-foreground">Tool path circle Ø</span><span className="font-mono">{fmt(lenFromImp(result.circular.pathDiameter, units), 3)} {u.length}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Tool path circle Ø</span><span className="font-mono text-right">{fmt(lenFromImp(result.circular.pathDiameter, units), 3)} {u.length}</span></div>
             )}
             {result.circular.helixPitch != null && (
-              <div className="flex justify-between"><span className="text-muted-foreground">Helix pitch / rev</span><span className="font-mono">{fmt(lenFromImp(result.circular.helixPitch, units), 3)} {u.length} @ {result.circular.rampAngleDeg}°</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Helix pitch / rev</span><span className="font-mono text-right">{fmt(lenFromImp(result.circular.helixPitch, units), 3)} {u.length} @ {result.circular.rampAngleDeg}°</span></div>
             )}
             {result.circular.helixTurns != null && (
-              <div className="flex justify-between"><span className="text-muted-foreground">Helix turns to depth</span><span className="font-mono">{result.circular.helixTurns}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Helix turns to depth</span><span className="font-mono text-right">{result.circular.helixTurns}</span></div>
             )}
             {result.circular.ringPasses != null && (
-              <div className="flex justify-between"><span className="text-muted-foreground">Radial ring passes</span><span className="font-mono">{result.circular.ringPasses}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Radial ring passes</span><span className="font-mono text-right">{result.circular.ringPasses}</span></div>
             )}
           </div>
           {result.circular.notes.length > 0 && (
@@ -149,7 +149,7 @@ export default function ResultsPanel({ result, units = "imperial" }) {
       )}
       {result.entry && (
         <div className="rounded-lg border border-border bg-card px-4 py-3 space-y-2.5">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
             <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
               Entry into Stock — {{ helix: "Helical Ramp", ramp: "Linear Ramp", plunge: "Plunge", predrilled: "Pre-drilled / Side Entry" }[result.entry.method]}
             </span>
@@ -170,22 +170,22 @@ export default function ResultsPanel({ result, units = "imperial" }) {
             </div>
           )}
           {result.entry.rampFeed != null && (
-            <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
-              <div className="flex justify-between"><span className="text-muted-foreground">Entry feed / tooth</span><span className="font-mono">{fmt(lenFromImp(result.entry.entryFpt, units), 4)} {u.length} ({Math.round(result.entry.entryFeedFactor * 100)}% of normal)</span></div>
-              <div className="flex justify-between"><span className="text-muted-foreground">Spindle feed / rev</span><span className="font-mono">{fmt(lenFromImp(result.entry.feedPerRev, units), 4)} {u.length}/rev</span></div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+              <div className="flex justify-between"><span className="text-muted-foreground">Entry feed / tooth</span><span className="font-mono text-right">{fmt(lenFromImp(result.entry.entryFpt, units), 4)} {u.length} ({Math.round(result.entry.entryFeedFactor * 100)}% of normal)</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Spindle feed / rev</span><span className="font-mono text-right">{fmt(lenFromImp(result.entry.feedPerRev, units), 4)} {u.length}/rev</span></div>
               {result.entry.method === "helix" && result.entry.pitchPerOrbit != null && (
                 <>
-                  <div className="flex justify-between"><span className="text-muted-foreground">Helix hole Ø</span><span className="font-mono">{fmt(lenFromImp(result.entry.helixHoleDia, units), 3)} {u.length} ({result.entry.helixHoleMult}× tool)</span></div>
-                  <div className="flex justify-between"><span className="text-muted-foreground">Path circle Ø</span><span className="font-mono">{fmt(lenFromImp(result.entry.pathDia, units), 3)} {u.length}</span></div>
-                  <div className="flex justify-between"><span className="text-muted-foreground">Helix pitch / orbit</span><span className="font-mono">{fmt(lenFromImp(result.entry.pitchPerOrbit, units), 4)} {u.length}</span></div>
-                  <div className="flex justify-between"><span className="text-muted-foreground">Turns to depth</span><span className="font-mono">{result.entry.turns} ({fmt(lenFromImp(result.entry.entryDepth, units), 3)} {u.length})</span></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">Helix hole Ø</span><span className="font-mono text-right">{fmt(lenFromImp(result.entry.helixHoleDia, units), 3)} {u.length} ({result.entry.helixHoleMult}× tool)</span></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">Path circle Ø</span><span className="font-mono text-right">{fmt(lenFromImp(result.entry.pathDia, units), 3)} {u.length}</span></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">Helix pitch / orbit</span><span className="font-mono text-right">{fmt(lenFromImp(result.entry.pitchPerOrbit, units), 4)} {u.length}</span></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">Turns to depth</span><span className="font-mono text-right">{result.entry.turns} ({fmt(lenFromImp(result.entry.entryDepth, units), 3)} {u.length})</span></div>
                 </>
               )}
               {result.entry.method === "ramp" && (
-                <div className="flex justify-between col-span-2"><span className="text-muted-foreground">Ramp length for depth</span><span className="font-mono">{fmt(lenFromImp(result.entry.rampLength, units), 3)} {u.length}</span></div>
+                <div className="flex justify-between gap-3 sm:col-span-2"><span className="text-muted-foreground">Ramp length for depth</span><span className="font-mono text-right">{fmt(lenFromImp(result.entry.rampLength, units), 3)} {u.length}</span></div>
               )}
-              <div className="flex justify-between"><span className="text-muted-foreground">Z feed</span><span className="font-mono">{feedFromImp(result.entry.axialFeedIpm, units).toLocaleString(undefined, { maximumFractionDigits: 2 })} {u.feed}</span></div>
-              <div className="flex justify-between"><span className="text-muted-foreground">Z per spindle rev</span><span className="font-mono">{fmt(lenFromImp(result.entry.axialIprSpindle, units), 5)} {u.length}/rev</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Z feed</span><span className="font-mono text-right">{feedFromImp(result.entry.axialFeedIpm, units).toLocaleString(undefined, { maximumFractionDigits: 2 })} {u.feed}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Z per spindle rev</span><span className="font-mono text-right">{fmt(lenFromImp(result.entry.axialIprSpindle, units), 5)} {u.length}/rev</span></div>
             </div>
           )}
           {result.entry.notes.length > 0 && (
@@ -201,21 +201,21 @@ export default function ResultsPanel({ result, units = "imperial" }) {
             <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{result.finishPlan.role === "finish" ? "Finish Pass Plan" : "Finish Allowance"}</span>
             <span className="text-[10px] font-medium rounded bg-muted px-1.5 py-0.5 text-muted-foreground uppercase">{result.priority === "finish" ? "Finish priority" : result.priority === "speed" ? "Speed priority" : "Balanced"}</span>
           </div>
-          <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
             {result.finishPlan.stockToLeaveRadial != null && (
               <>
-                <div className="flex justify-between"><span className="text-muted-foreground">Leave on walls</span><span className="font-mono">{fmt(lenFromImp(result.finishPlan.stockToLeaveRadial, units), 3)} {u.length}</span></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">Leave on floors</span><span className="font-mono">{fmt(lenFromImp(result.finishPlan.stockToLeaveAxial, units), 3)} {u.length}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Leave on walls</span><span className="font-mono text-right">{fmt(lenFromImp(result.finishPlan.stockToLeaveRadial, units), 3)} {u.length}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Leave on floors</span><span className="font-mono text-right">{fmt(lenFromImp(result.finishPlan.stockToLeaveAxial, units), 3)} {u.length}</span></div>
               </>
             )}
             {result.finishPlan.scallop && (
               <>
-                <div className="flex justify-between"><span className="text-muted-foreground">Scallop height</span><span className="font-mono">{fmt(lenFromImp(result.finishPlan.scallop.cuspHeightIn, units) * (units === "metric" ? 1000 : 1e6), 1)} {units === "metric" ? "µm" : "µin"}</span></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">Predicted Ra (theory → real)</span><span className="font-mono">{fmt(result.finishPlan.scallop.raTheoreticalUin, 0)} → {fmt(result.finishPlan.scallop.raRealisticUin, 0)} µin</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Scallop height</span><span className="font-mono text-right">{fmt(lenFromImp(result.finishPlan.scallop.cuspHeightIn, units) * (units === "metric" ? 1000 : 1e6), 1)} {units === "metric" ? "µm" : "µin"}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Predicted Ra (theory → real)</span><span className="font-mono text-right">{fmt(result.finishPlan.scallop.raTheoreticalUin, 0)} → {fmt(result.finishPlan.scallop.raRealisticUin, 0)} µin</span></div>
               </>
             )}
             {result.deflection && (
-              <div className="flex justify-between col-span-2"><span className="text-muted-foreground">Tool deflection (worst-case est.)</span><span className={`font-mono ${result.deflection.estimateIn > result.deflection.limitIn ? "text-destructive" : ""}`}>{fmt(lenFromImp(result.deflection.estimateIn, units), units === "metric" ? 4 : 5)} {u.length}</span></div>
+              <div className="flex justify-between gap-3 sm:col-span-2"><span className="text-muted-foreground">Tool deflection (worst-case est.)</span><span className={`font-mono ${result.deflection.estimateIn > result.deflection.limitIn ? "text-destructive" : ""}`}>{fmt(lenFromImp(result.deflection.estimateIn, units), units === "metric" ? 4 : 5)} {u.length}</span></div>
             )}
           </div>
           {result.finishPlan.notes.map((n, i) => (<p key={i} className="text-[11px] text-muted-foreground leading-relaxed">• {n}</p>))}
@@ -223,17 +223,17 @@ export default function ResultsPanel({ result, units = "imperial" }) {
       )}
       <div className="rounded-lg border border-border bg-card px-4 py-3">
         <div className="flex items-center justify-between text-xs text-muted-foreground">
-          <span>Surface Speed</span><span className="font-mono">{fmt(surfaceFromImp(result.sfm, units), 1)} {u.surface}</span>
+          <span>Surface Speed</span><span className="font-mono text-right">{fmt(surfaceFromImp(result.sfm, units), 1)} {u.surface}</span>
         </div>
         <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
-          <span>Material Removal Rate</span><span className="font-mono">{fmt(mrrFromImp(result.mrr, units), 1)} {u.mrr}</span>
+          <span>Material Removal Rate</span><span className="font-mono text-right">{fmt(mrrFromImp(result.mrr, units), 1)} {u.mrr}</span>
         </div>
         <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
-          <span>Chip Thickness</span><span className="font-mono">{fmt(lenFromImp(result.chipLoad, units), 4)} {u.length}</span>
+          <span>Chip Thickness</span><span className="font-mono text-right">{fmt(lenFromImp(result.chipLoad, units), 4)} {u.length}</span>
         </div>
         {result.passes != null && (
           <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
-            <span>Axial Passes</span><span className="font-mono">{result.passes} × {fmt(lenFromImp(result.stepdown, units), 3)} {u.length}/pass</span>
+            <span>Axial Passes</span><span className="font-mono text-right">{result.passes} × {fmt(lenFromImp(result.stepdown, units), 3)} {u.length}/pass</span>
           </div>
         )}
         <div className="mt-2">
