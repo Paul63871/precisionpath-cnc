@@ -13,7 +13,7 @@ function GalleryGroup({ title, items }) {
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
         {items.map((it) => (
           <div key={it.key} className="flex flex-col items-center gap-1.5 rounded-lg border border-border bg-card px-2 py-3 text-center">
-            <ToolIcon kind={it.kind} id={it.id} className="w-14 h-14" title={it.name} />
+            <ToolIcon kind={it.kind} id={it.id} className="w-16 h-16" title={it.name} />
             <span className="text-xs leading-tight break-words">{it.name}</span>
           </div>
         ))}

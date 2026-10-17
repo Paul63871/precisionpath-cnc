@@ -52,26 +52,59 @@ const MILLING = {
   ),
   corner_round: () => (
     <>
-      <Shank x="26" w="12" y2="24" />
-      <path d="M20 24 H44 V44 Q44 53 36 53 V58 H28 V53 Q20 53 20 44 Z" {...CT} />
-      <g {...LN}><path d="M22 30 L42 24" opacity="0"/><path d="M20 36 L44 30" /><path d="M20 44 L36 38" /><path d="M28 54 L36 53" opacity=".6" /></g>
+      {/* shank + neck */}
+      <path d="M26 4 H38 V20 L42 25 H22 L26 20 Z" {...SH} />
+      {/* head: straight flutes above, concave quarter-round cutting form at the end, small pilot nose */}
+      <path d="M22 25 H42 V44 A8 8 0 0 0 34 52 V58 H30 V52 A8 8 0 0 0 22 44 Z" {...CT} />
+      {/* helical flutes */}
+      <g {...LN}>
+        <path d="M22 30 L42 25" />
+        <path d="M22 37 L42 32" />
+        <path d="M22 44 L38 38.5" />
+      </g>
+      {/* highlight */}
+      <path d="M25 27 V42" stroke="#fff" strokeOpacity=".35" strokeWidth="1.6" strokeLinecap="round" fill="none" />
+      <path d="M29 6 V19" stroke="#fff" strokeOpacity=".45" strokeWidth="1.6" strokeLinecap="round" fill="none" />
     </>
   ),
   concave_radius: () => (
     <>
-      <Shank y2="24" />
-      <path d="M20 24 H44 V46 Q44 58 34 58 H30 Q20 58 20 46 Z" {...CT} />
-      <g {...LN}><path d="M20 33 L44 27" /><path d="M20 42 L44 36" /><path d="M22 52 L40 46" /></g>
+      <path d="M26 4 H38 V20 L42 25 H22 L26 20 Z" {...SH} />
+      {/* head with large full-radius corners and a small flat in the middle */}
+      <path d="M22 25 H42 V50 A8 8 0 0 1 34 58 H30 A8 8 0 0 1 22 50 Z" {...CT} />
+      <g {...LN}>
+        <path d="M22 31 L42 26" />
+        <path d="M22 38 L42 33" />
+        <path d="M22 45 L42 40" />
+        <path d="M23 52 L38 47" />
+      </g>
+      <path d="M25 27 V44" stroke="#fff" strokeOpacity=".35" strokeWidth="1.6" strokeLinecap="round" fill="none" />
+      <path d="M29 6 V19" stroke="#fff" strokeOpacity=".45" strokeWidth="1.6" strokeLinecap="round" fill="none" />
     </>
   ),
   round_insert: () => (
     <>
-      <rect x="27" y="4" width="10" height="14" rx="1.2" {...SH} />
-      <path d="M13 18 H51 V40 H13 Z" {...SH} />
-      <circle cx="17" cy="47" r="7" {...CT} />
-      <circle cx="47" cy="47" r="7" {...CT} />
-      <circle cx="17" cy="47" r="2" fill="currentColor" fillOpacity=".55" />
-      <circle cx="47" cy="47" r="2" fill="currentColor" fillOpacity=".55" />
+      {/* arbor / shank with a flat */}
+      <path d="M26 3 H38 V13 H26 Z" {...SH} />
+      <path d="M29 3 V13" stroke="currentColor" strokeOpacity=".35" strokeWidth="1" />
+      {/* cutter body */}
+      <path d="M26 13 H38 L46 20 V36 H18 V20 Z" {...SH} />
+      <path d="M22 22 V34" stroke="#fff" strokeOpacity=".5" strokeWidth="1.6" strokeLinecap="round" />
+      {/* coolant ports */}
+      <circle cx="32" cy="28" r="1.6" fill="currentColor" fillOpacity=".35" />
+      {/* two round inserts seated in pockets at the nose */}
+      <path d="M14 36 H50 V40 H14 Z" fill="currentColor" fillOpacity=".3" stroke="currentColor" strokeWidth="1.2" />
+      <circle cx="20" cy="44" r="8.5" {...CT} />
+      <circle cx="44" cy="44" r="8.5" {...CT} />
+      <circle cx="20" cy="44" r="5.4" fill="none" stroke="hsl(var(--brand))" strokeOpacity=".7" strokeWidth="1" />
+      <circle cx="44" cy="44" r="5.4" fill="none" stroke="hsl(var(--brand))" strokeOpacity=".7" strokeWidth="1" />
+      {/* clamp screws (torx head) */}
+      {[20, 44].map((x) => (
+        <g key={x}>
+          <circle cx={x} cy="44" r="2.6" fill="currentColor" fillOpacity=".55" stroke="currentColor" strokeWidth="1" />
+          <path d={`M${x - 1.4} 44 H${x + 1.4} M${x} 42.6 V45.4`} stroke="#fff" strokeOpacity=".8" strokeWidth=".8" />
+        </g>
+      ))}
     </>
   ),
   roughing: () => (
@@ -90,10 +123,31 @@ const MILLING = {
   ),
   face_mill: () => (
     <>
-      <rect x="27" y="4" width="10" height="12" rx="1.2" {...SH} />
-      <path d="M8 16 H56 V40 L50 46 H14 L8 40 Z" {...SH} />
-      {[12, 24, 36, 48].map((x) => <rect key={x} x={x - 3} y="42" width="7" height="9" rx="1" {...CT} />)}
-      <circle cx="32" cy="29" r="4" fill="currentColor" fillOpacity=".25" />
+      {/* arbor with drive keyways */}
+      <path d="M24 3 H40 V11 H24 Z" {...SH} />
+      <path d="M20 11 H44 V17 H20 Z" {...SH} />
+      <rect x="22.5" y="12.2" width="4" height="3.6" fill="currentColor" fillOpacity=".4" />
+      <rect x="37.5" y="12.2" width="4" height="3.6" fill="currentColor" fillOpacity=".4" />
+      {/* tapered cutter body */}
+      <path d="M12 17 H52 L58 36 H6 Z" {...SH} />
+      <path d="M12 22 L10 32" stroke="#fff" strokeOpacity=".5" strokeWidth="1.6" strokeLinecap="round" />
+      {/* bore + coolant holes */}
+      <circle cx="32" cy="26" r="3" fill="currentColor" fillOpacity=".3" stroke="currentColor" strokeWidth="1" />
+      <circle cx="20" cy="26" r="1.2" fill="currentColor" fillOpacity=".4" />
+      <circle cx="44" cy="26" r="1.2" fill="currentColor" fillOpacity=".4" />
+      {/* insert pockets around the rim with indexable inserts + clamp screws */}
+      {[10, 22, 34, 46, 58].map((x, i) => (
+        <g key={x} transform={`translate(${x - 8} 0)`}>
+          {i < 4 && (
+            <g>
+              <path d="M2 34 H14 L13 46 H1 Z" {...CT} transform="rotate(-6 8 40)" />
+              <circle cx="7.5" cy="40" r="2.2" fill="currentColor" fillOpacity=".5" stroke="currentColor" strokeWidth=".9" transform="rotate(-6 8 40)" />
+            </g>
+          )}
+        </g>
+      ))}
+      {/* a wiper-flat line to show the cutting plane */}
+      <path d="M4 50 H60" stroke="currentColor" strokeOpacity=".5" strokeWidth="1" strokeDasharray="2 2" />
     </>
   ),
   drill: () => (

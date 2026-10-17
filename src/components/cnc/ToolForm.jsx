@@ -149,7 +149,7 @@ export default function ToolForm({ value, onChange, units = "imperial" }) {
               const badTapMat = nt && nt.isTap && value.toolMaterialId !== "hss" && value.toolMaterialId !== "cobalt";
               onChange({ ...value, toolTypeId: v, ...(badTapMat ? { toolMaterialId: "hss" } : {}) });
             }}
-            options={TOOL_TYPES.map((t) => ({ value: t.id, label: t.name, icon: <ToolIcon kind="tool" id={t.id} className="w-8 h-8" /> }))}
+            options={TOOL_TYPES.map((t) => ({ value: t.id, label: t.name, icon: <ToolIcon kind="tool" id={t.id} className="w-11 h-11" /> }))}
           />
         </div>
         <div className="space-y-1.5">
@@ -162,7 +162,7 @@ export default function ToolForm({ value, onChange, units = "imperial" }) {
         </div>
       </div>
       <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/30 px-3 py-2">
-        <ToolIcon kind={isTap ? "tap" : "tool"} id={isTap ? (value.tapStyle || "spiral_point") : toolType.id} className="w-14 h-14" title={toolType.name} />
+        <ToolIcon kind={isTap ? "tap" : "tool"} id={isTap ? (value.tapStyle || "spiral_point") : toolType.id} className="w-16 h-16" title={toolType.name} />
         <div className="min-w-0">
           <div className="text-sm font-medium leading-tight break-words">{toolType.name}</div>
           <div className="text-[11px] text-muted-foreground leading-snug">{TOOL_BLURB[toolType.id] || ""}</div>
