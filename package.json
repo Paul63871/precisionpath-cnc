@@ -4,6 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "test:audit": "node tests/audit.mjs && node tests/run-legacy.mjs",
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint . --quiet",

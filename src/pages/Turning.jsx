@@ -5,6 +5,7 @@ import MachineForm from "@/components/cnc/MachineForm";
 import MaterialSearch from "@/components/cnc/MaterialSearch";
 import ResponsiveSelect from "@/components/cnc/ResponsiveSelect";
 import ToolIcon from "@/components/cnc/ToolIcon";
+import ProcessExplanation from "@/components/cnc/ProcessExplanation";
 import UnitsToggle from "@/components/cnc/UnitsToggle";
 import NumberField from "@/components/NumberField";
 import { Label } from "@/components/ui/label";
@@ -265,8 +266,8 @@ export default function Turning() {
         <div className="lg:col-span-2">
           <div className="lg:sticky lg:top-20 space-y-5">
             <Section icon={Sparkles} title="Optimize For">
-              <div className="grid grid-cols-3 gap-1.5">
-                {[["finish", "Finish quality"], ["balanced", "Balanced"], ["speed", "Speed / MRR"]].map(([id, label]) => (
+              <div className="grid grid-cols-2 gap-1.5">
+                {[["finish", "Finish quality"], ["life", "Tool life"], ["balanced", "Balanced"], ["speed", "Speed / MRR"]].map(([id, label]) => (
                   <button key={id} type="button" onClick={() => setPriority(id)} className={`rounded-lg border px-2 py-2 text-xs font-medium min-h-[40px] ${priority === id ? "border-brand bg-brand text-white" : "border-border bg-card hover:bg-accent"}`}>{label}</button>
                 ))}
               </div>
@@ -274,9 +275,10 @@ export default function Turning() {
                 <div className="flex justify-between text-xs">
                   <span className="text-muted-foreground">Conservative</span>
                   <span className="font-mono text-brand font-semibold">{Math.round(aggressiveness * 100)}%</span>
-                  <span className="text-muted-foreground">Aggressive</span>
+                  <span className="text-muted-foreground">Higher productivity</span>
                 </div>
                 <input type="range" min="0" max="1" step="0.05" value={aggressiveness} onChange={(e) => setAggressiveness(parseFloat(e.target.value))} className="w-full accent-brand" />
+                <p className="text-[11px] text-muted-foreground">100% is the top of the starting-policy range, not 100% machine power. The HP budget is at most 80%; this estimate does not guarantee tool strength.</p>
               </div>
             </Section>
             <Section icon={Disc3} title="Recommended Parameters" highlight>
@@ -299,6 +301,7 @@ function TurnResults({ result, units, sfmOut, surfUnit, op }) {
     const d = result.drill;
     return (
       <div className="space-y-3">
+        <ProcessExplanation result={result} units={units} />
         <div className="grid grid-cols-2 gap-3">
           <Metric icon={Gauge} label="Spindle Speed" value={d.rpm.toLocaleString()} unit="RPM" accent="text-brand" />
           <Metric icon={Activity} label="Feed / Rev" value={fmt(lenFromImp(result.ipr, units), units === "metric" ? 3 : 4)} unit={`${u.length}/rev`} accent="text-brand" />
@@ -317,6 +320,7 @@ function TurnResults({ result, units, sfmOut, surfUnit, op }) {
   const pct = result.hpRequired && result.hpAvailable ? 0 : 0;
   return (
     <div className="space-y-3">
+      <ProcessExplanation result={result} units={units} />
       <div className="grid grid-cols-2 gap-3">
         <Metric icon={Gauge} label="Spindle Speed" value={result.rpm.toLocaleString()} unit="RPM" accent="text-brand" />
         <Metric icon={Activity} label="Feed / Rev" value={fmt(lenFromImp(result.feedIpr, units), units === "metric" ? 3 : 4)} unit={`${u.length}/rev`} accent="text-brand" />

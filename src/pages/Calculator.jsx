@@ -92,6 +92,8 @@ export default function Calculator() {
       setOperationId(c.operation_id);
       setMachine({ hp: c.machine_hp, maxRpm: c.machine_max_rpm, minRpm: c.machine_min_rpm, maxIpm: c.machine_max_ipm });
       setAggressiveness(c.aggressiveness);
+      if (c.tool_data?.processData?.adaptive) setAdaptive(c.tool_data.processData.adaptive);
+      if (c.tool_data?.processData?.priority) setPriority(c.tool_data.processData.priority);
     } else if (st.machineProfile) {
       const p = st.machineProfile;
       setMachine({ hp: p.hp, maxRpm: p.max_rpm, minRpm: p.min_rpm, maxIpm: p.max_ipm });
@@ -134,6 +136,9 @@ export default function Calculator() {
       gripDepth: adaptive.gripDepth,
       jawTypeId: adaptive.jawTypeId, clampForce: adaptive.clampForce,
       priority, featureDiameter: adaptive.featureDiameter, pilotDiameter: adaptive.pilotDiameter, targetRa: adaptive.targetRa, entryMethod: adaptive.entryMethod || undefined, helixDiameter: adaptive.helixDiameter,
+      previousToolDiameter: adaptive.previousToolDiameter, previousStock: adaptive.previousStock,
+      insideCornerRadius: adaptive.insideCornerRadius, cornerAngleDeg: adaptive.cornerAngleDeg,
+      finishToolDiameter: adaptive.finishToolDiameter,
     });
   }, [tool, selectedMaterial, operationId, aggressiveness, machine, override, adaptive, priority]);
 
@@ -142,7 +147,7 @@ export default function Calculator() {
     try {
       await base44.entities.SavedCalculation.create({
         name: saveName || `Calc ${new Date().toLocaleString()}`,
-        tool_data: tool,
+        tool_data: { ...tool, processData: { adaptive, priority } },
         tool_type_id: tool.toolTypeId, tool_material_id: tool.toolMaterialId, coating_id: tool.coatingId,
         diameter: tool.diameter, flutes: tool.flutes, loc: tool.loc,
         material_id: materialId, operation_id: operationId,
@@ -262,6 +267,34 @@ export default function Calculator() {
                     </p>
                   </div>
                 )}
+                {selectedOp && (/contour|waterline/.test(selectedOp.id) || selectedOp.id === "3d_pocket") && (
+                  <fieldset className="col-span-2 rounded-lg border border-border bg-muted/30 p-3 space-y-3">
+                    <legend className="text-xs font-semibold px-1">Previous roughing / inside corners</legend>
+                    <p className="text-[11px] text-muted-foreground leading-relaxed">If a larger tool roughed this feature, enter its diameter and actual wall stock. This estimates corner buildup separately from your straight-wall radial pass. For 3D contours this is only a planar cross-section; verify with the CAM stock model.</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {[
+                        ["previousToolDiameter", "Previous roughing tool Ø", "Optional"],
+                        ["previousStock", "Previous radial stock left", "Enter actual CAM stock"],
+                        ["insideCornerRadius", "Final inside corner radius", "Part geometry, not tool radius"],
+                      ].map(([key, title, placeholder]) => (
+                        <div key={key} className="space-y-1.5">
+                          <Label htmlFor={key} className="text-xs text-muted-foreground">{title} ({UNITS[units].length})</Label>
+                          <NumberField id={key} className="h-10" allowClear placeholder={placeholder} value={adaptive[key] != null ? lenFromImp(adaptive[key], units) : undefined} onValueChange={(n) => setAdaptive((a) => ({ ...a, [key]: n == null ? undefined : lenToImp(n, units) }))} />
+                        </div>
+                      ))}
+                      <div className="space-y-1.5">
+                        <Label htmlFor="cornerAngleDeg" className="text-xs text-muted-foreground">Included wall angle (degrees)</Label>
+                        <NumberField id="cornerAngleDeg" className="h-10" allowClear placeholder="90° default" value={adaptive.cornerAngleDeg} onValueChange={(n) => setAdaptive((a) => ({ ...a, cornerAngleDeg: n }))} />
+                      </div>
+                    </div>
+                  </fieldset>
+                )}
+                {selectedOp && !selectedOp.finishing && !["drill", "tap"].includes(selectedOp.docMode) && (
+                  <div className="col-span-2 space-y-1.5">
+                    <Label htmlFor="finishToolDiameter" className="text-xs text-muted-foreground">Planned finishing cutter Ø ({UNITS[units].length})</Label>
+                    <NumberField id="finishToolDiameter" className="h-10" allowClear placeholder="Optional; otherwise current tool is provisional" value={adaptive.finishToolDiameter ? lenFromImp(adaptive.finishToolDiameter, units) : undefined} onValueChange={(n) => setAdaptive((a) => ({ ...a, finishToolDiameter: n ? lenToImp(n, units) : undefined }))} />
+                  </div>
+                )}
                 {selectedOp?.finishing && (
                   <div className="space-y-1.5 col-span-2">
                     <Label className="text-xs text-muted-foreground">Target surface finish Ra (µin)</Label>
@@ -379,8 +412,8 @@ export default function Calculator() {
         <div className="lg:col-span-2">
           <div className="lg:sticky lg:top-20 space-y-5">
             <Section icon={Sparkles} title="Optimize For">
-              <div className="grid grid-cols-3 gap-1.5">
-                {[["finish", "Finish quality"], ["balanced", "Balanced"], ["speed", "Speed / MRR"]].map(([id, label]) => (
+              <div className="grid grid-cols-2 gap-1.5">
+                {[["finish", "Finish quality"], ["life", "Tool life"], ["balanced", "Balanced"], ["speed", "Speed / MRR"]].map(([id, label]) => (
                   <button
                     key={id} type="button" onClick={() => setPriority(id)}
                     className={`rounded-lg border px-2 py-2 text-xs font-medium min-h-[40px] ${priority === id ? "border-brand bg-brand text-white" : "border-border bg-card text-foreground hover:bg-accent"}`}
@@ -388,20 +421,21 @@ export default function Calculator() {
                 ))}
               </div>
               <p className="text-[11px] text-muted-foreground mt-2 leading-relaxed">
-                {priority === "finish" && "Lighter chip load, stepover and depth, finishing passes held to a roughness target, with speed kept up to avoid built-up edge. Slower cycle time, better surface and tool life."}
-                {priority === "balanced" && "Manufacturer-benchmark production rates (IMCO ToolBot-style) with no finish bias."}
-                {priority === "speed" && "Pushes chip load, stepover and depth toward the machine's power limit for maximum removal rate."}
+                {priority === "finish" && "Biases chip load, engagement and geometric finish targets toward surface quality. Not a guarantee of actual Ra or tool life."}
+                {priority === "life" && "Uses a lower position in the speed window and moderated loading. No prediction of tool-life hours; do not starve the edge into rubbing."}
+                {priority === "balanced" && "General starting data with application headroom, not an exact-tool manufacturer match."}
+                {priority === "speed" && "Higher productivity within the same speed, feed, length and power caps. Never disables safeguards or requests 100% spindle power."}
               </p>
             </Section>
-            <Section icon={Sliders} title="Aggressiveness">
+            <Section icon={Sliders} title="Cutting intensity">
               <div className="space-y-2">
                 <div className="flex justify-between text-xs">
                   <span className="text-muted-foreground">Conservative</span>
                   <span className="font-mono text-brand font-semibold">{Math.round(aggressiveness * 100)}%</span>
-                  <span className="text-muted-foreground">Aggressive</span>
+                  <span className="text-muted-foreground">Higher productivity</span>
                 </div>
                 <input type="range" min="0" max="1" step="0.05" value={aggressiveness} onChange={(e) => setAggressiveness(parseFloat(e.target.value))} className="w-full accent-brand" />
-                <p className="text-[11px] text-muted-foreground">Default 60% gives slightly conservative, reliable rates.</p>
+                <p className="text-[11px] text-muted-foreground">100% is the top of the starting-policy range, not 100% machine power. Maximum HP budget is 80%; this estimate does not certify tool strength or stability.</p>
               </div>
             </Section>
             <Section

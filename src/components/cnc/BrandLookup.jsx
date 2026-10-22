@@ -130,7 +130,7 @@ RULES:
   return (
     <div className="space-y-3">
       <p className="text-xs text-muted-foreground">
-        Optionally look up a specific tool by brand and exact model number. We find the manufacturer's product page, pull the real tool specs, and apply its SFM and chip load to your setup.
+        AI-assisted tool lookup by brand and model. Review the original catalog page, material condition and engagement before applying any retrieved speed or chip load. A found URL is not independent verification.
       </p>
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1.5">
@@ -198,7 +198,7 @@ RULES:
                   size="sm"
                   variant={exact && flags.length === 0 ? "default" : "outline"}
                   className="w-full h-8 mt-1"
-                  onClick={() => onApply({ sfm: result.sfm, chipLoad: result.chip_load_per_tooth })}
+                  onClick={() => onApply({ sfm: result.sfm, chipLoad: result.chip_load_per_tooth, sourceUrl: result.source_url, isEstimate: result.is_estimate, requiresCatalogReview: true })}
                 >
                   {flags.length > 0 ? "Apply anyway (unverified)" : "Apply to calculator"}
                 </Button>

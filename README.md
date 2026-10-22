@@ -75,3 +75,14 @@ Documentation: [https://docs.base44.com/Integrations/Using-GitHub](https://docs.
 Base44 CLI command reference: [https://docs.base44.com/developers/references/cli/commands/introduction](https://docs.base44.com/developers/references/cli/commands/introduction)
 
 Support: [https://app.base44.com/support](https://app.base44.com/support)
+# Calculation audit and process guidance
+
+The October 22, 2026 audit is in [docs/feeds-speeds-audit-2026-10-22.md](docs/feeds-speeds-audit-2026-10-22.md).
+Run `npm run test:audit` for numerical invariant sweeps and retained regression fixtures.
+Run `node tests/generate-report-appendix.mjs` after the tests to refresh the report's app-data snapshot.
+
+These tests establish numerical behavior, not physical validation of every tool.
+The shared intensity policy reserves at least 20% of entered HP at its top setting,
+but this is an application estimate, not a tool-strength or chatter guarantee.
+Stock allowances and prior-tool corner screening must be verified against the
+actual finishing cutter, incoming stock and CAM geometry.

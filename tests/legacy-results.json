@@ -1,0 +1,110 @@
+[
+  {
+    "file": "test_aluminum_jaw.mjs",
+    "status": 0,
+    "pass": true,
+    "errors": []
+  },
+  {
+    "file": "test_ballnose.mjs",
+    "status": 0,
+    "pass": true,
+    "errors": []
+  },
+  {
+    "file": "test_ballnose_sweep.mjs",
+    "status": 0,
+    "pass": true,
+    "errors": []
+  },
+  {
+    "file": "test_circular.mjs",
+    "status": 0,
+    "pass": true,
+    "errors": []
+  },
+  {
+    "file": "test_clamping_force.mjs",
+    "status": 0,
+    "pass": true,
+    "errors": []
+  },
+  {
+    "file": "test_entry.mjs",
+    "status": 0,
+    "pass": true,
+    "errors": []
+  },
+  {
+    "file": "test_facing.mjs",
+    "status": 0,
+    "pass": true,
+    "errors": []
+  },
+  {
+    "file": "test_finish_priority.mjs",
+    "status": 0,
+    "pass": true,
+    "errors": []
+  },
+  {
+    "file": "test_g10_g11.mjs",
+    "status": 0,
+    "pass": true,
+    "errors": []
+  },
+  {
+    "file": "test_imco.mjs",
+    "status": 0,
+    "pass": true,
+    "errors": []
+  },
+  {
+    "file": "test_phenolic.mjs",
+    "status": 0,
+    "pass": true,
+    "errors": []
+  },
+  {
+    "file": "test_plastics.mjs",
+    "status": 0,
+    "pass": true,
+    "errors": []
+  },
+  {
+    "file": "test_radius.mjs",
+    "status": 0,
+    "pass": true,
+    "errors": []
+  },
+  {
+    "file": "test_regression.mjs",
+    "status": 0,
+    "pass": true,
+    "errors": []
+  },
+  {
+    "file": "test_tapping.mjs",
+    "status": 0,
+    "pass": true,
+    "errors": []
+  },
+  {
+    "file": "test_tapping_holetype.mjs",
+    "status": 0,
+    "pass": true,
+    "errors": []
+  },
+  {
+    "file": "test_turning.mjs",
+    "status": 0,
+    "pass": true,
+    "errors": []
+  },
+  {
+    "file": "test_workholding.mjs",
+    "status": 0,
+    "pass": true,
+    "errors": []
+  }
+]

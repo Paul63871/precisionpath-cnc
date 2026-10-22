@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 // External value changes (unit switches, loading a saved calc) are mirrored when
 // the field is not focused, so display stays in sync without clobbering in-progress edits.
 // allowClear: when true, clearing the field pushes `undefined` (used for optional/auto fields).
-export default function NumberField({ value, onValueChange, className, placeholder, allowClear, disabled, step }) {
+export default function NumberField({ value, onValueChange, className, placeholder, allowClear, disabled, step, id }) {
   const [text, setText] = useState("");
   const [focused, setFocused] = useState(false);
 
@@ -27,13 +27,14 @@ export default function NumberField({ value, onValueChange, className, placehold
       return;
     }
     const n = Number(t);
-    if (t !== "-" && t !== "." && !Number.isNaN(n)) {
+    if (t !== "-" && t !== "." && Number.isFinite(n)) {
       onValueChange(n);
     }
   };
 
   return (
     <Input
+      id={id}
       type="text"
       inputMode="decimal"
       value={text}

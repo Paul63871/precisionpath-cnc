@@ -8,8 +8,45 @@ PRECISIONPATH CNC — COMPLETE TECHNICAL & DATA REFERENCE
 A physics-based CNC feeds & speeds calculator. Input = machine + tool + workpiece
 material + operation. Output = RPM, IPM (feed), chip load, DOC (axial depth of
 cut), WOC (radial width of cut), MRR, spindle HP, peck-drilling G-code, multi-pass
-stepdown, chip-thinning factors, and safety warnings. Calibrated against proven
-manufacturer (coated-carbide) reference charts so default output is shop-reliable.
+stepdown, chip-thinning factors, and safety warnings. Generic starting data and
+engineering estimates do not guarantee exact-tool performance or cutting safety.
+
+AUDIT UPDATE, 2026-10-22 (authoritative over historical details below)
+- Tool life is a separate objective. Speed mode no longer boosts beyond slider 1.
+  At 100%, maximum HP budget is 80% of entered continuous HP. This reserve and
+  objective biases are engineering POLICY estimates, not tool-strength limits.
+- Speed-window position is 0..0.8 of its span, or 0..0.45 for tool life. Those
+  fractions are policy choices, not an 80%-safe tool envelope.
+- Actual SFM comes from achieved RPM. Feed/RPM, LOC and compatibility limits
+  remain active. Impossible/unmodeled setups are marked not runnable.
+- Tapping/threading change RPM and feed together to preserve pitch. An infeasible
+  machine minimum-RPM / maximum-feed combination is blocked.
+- Facing: ZERO radial stock. Rough faces may leave axial stock; final facing
+  leaves zero. Walls/bores leave radial stock, not automatic floor stock.
+  Pockets may leave walls/floors; 3D surfaces use normal allowance.
+- The generic allowance is 1.5% of the PLANNED FINISH-tool diameter (current tool
+  if unknown). Seco's 1-2% guidance is not a universal floor/material spec; using
+  it beyond its hard-milling context is explicitly an engineering estimate.
+- Prior-tool corner inputs cover 2D contours, 3D waterline and Pocket/Contour 3D.
+  Planar formula: csc=1/sin(angle/2), Rrough=max(Rprevious,Rfinal-s);
+  bisector stock=max(s, s*csc+(Rrough-Rfinal)*(csc-1)). Above planned WOC,
+  rest-clear/semi-finish first. This is not a full 3D stock/engagement solver.
+- No universal 40% aluminum-jaw strength derate is used. Jaw geometry, alloy/
+  temper, support and contact are necessary. Friction-only grip is an estimate.
+- Slotting's 20% speed reduction is applied once, not twice.
+- Ra, LOC-based beam deflection, generic coating/material multipliers and power
+  factors are estimates. AI brand lookup is not independently verified catalog
+  data. Check its actual source and whether chip thinning is already included.
+- Historical sections below describe background; use current code/audit report
+  for active policy, compatibility, source applicability and test scope.
+Sources:
+https://www.harveyperformance.com/machining-advisor-pro-user-guide/
+https://www.harveyperformance.com/in-the-loupe/speeds-and-feeds-101/
+https://michigandrill.com/catalog/technical_data_milling_calcs.php
+https://www.tapmatic.com/tapping_questions_tapping_formulas.ydev
+https://www.secotools.com/article/finish_stock_allowance_with_solid_end_mills
+https://www.sandvik.coromant.com/en-us/knowledge/milling/milling-inside-corners
+https://www1.mscdirect.com/images/solutions/kennametal/millingTechInfoInterpolation.pdf
 
 --------------------------------------------------------------------------------
 2. TECH STACK
@@ -32,10 +69,10 @@ INPUT OBJECT:
   pointAngle, radialLoad, axialDoc, featureDepth, gripDepth, jawTypeId, clampForce
 
 3.1 SURFACE SPEED (SFM)
-  - If override.sfm exists:  SFM = override.sfm * op.sfmMult
-  - Else:                   SFM = lerp(sfmMin, sfmMax, agg) * tm.sfmMult
+  - If override.sfm exists:  SFM = override.sfm * min(1,op.sfmMult) * lerp(0.75,1,speedPosition)
+  - Else:                   SFM = lerp(sfmMin, sfmMax, speedPosition) * tm.sfmMult
                                 * coat.sfmMult * op.sfmMult * tt.sfmMult
-    (sfmMin/sfmMax = material's calibrated range; agg = aggressiveness 0..1)
+    (sfmMin/sfmMax = generic starting range; speedPosition follows audit policy above)
 
 3.2 SPINDLE SPEED (RPM)
   - rpmIdeal = (SFM * 3.82) / diameter
@@ -144,23 +181,17 @@ INPUT OBJECT:
     - jaw = WORKHOLDING_JAW_TYPES lookup (cncData.js), default smooth_steel
       (mu=0.20) when jawTypeId unset — the conservative/lower-grip default:
         smooth_steel (mu=0.20), serrated (mu=0.50), soft_jaw_steel (mu=0.50),
-        soft_jaw_aluminum (mu=0.25, forceDerate=0.4), grippy_plate (mu=0.65)
+        soft_jaw_aluminum (mu=0.25), grippy_plate (mu=0.65); all mu values are estimates
     - safetyFactor = 4 if op.slotDerate (full-radial/interrupted engagement:
       slotting, boring) else 3 (continuous engagement: contour, adaptive,
       pocket, face) — both inside the sourced 2-5x range.
     - requiredClampForce = (cuttingForce * safetyFactor) / jaw.mu
     - if clampForce (user's vise rating) provided:
-        usableClampForce = clampForce * jaw.forceDerate
+        usableClampForce = clampForce (jaw strength not evaluated)
         clampMargin = usableClampForce / requiredClampForce
         insufficient = clampMargin < 1.0
-        jawLimited = insufficient && jaw.forceDerate < 1 &&
-                     clampForce / requiredClampForce >= 1  (vise is enough,
-                     the aluminum jaw is the weak link -> dedicated warning)
-    - forceDerate: aluminum (6061-T6) jaws only reliably carry ~30-50% of an
-      equivalent steel jaw's clamping force before yielding (machally.com
-      vise-jaw-selection-guide, ctemag.com fixture-considerations). The lower
-      end (0.4) is used because overstating usable force is the unsafe
-      direction. Steel jaws (smooth, serrated, steel soft jaws) = 1.0.
+        jawStrengthEvaluated = false; jawLimited = false
+    - No material-only jaw strength rating is inferred from aluminum vs steel.
       else: ratedClampForce/clampMargin = null, insufficient = false (still
       reports the requirement as an estimate for the machinist to compare).
     - Source for the full slip-prevention formula chain, friction

@@ -23,6 +23,7 @@
 
 import { PART_MATERIALS, WORKHOLDING_JAW_TYPES, lerp, clamp } from "./cncData";
 import { calculate as calculateMilling } from "./cncEngine";
+import { processPolicy, PROCESS_SOURCES } from "./processModel";
 import {
   TURNING_OPERATIONS, INSERT_SHAPES, GRADE_MULT, HSS_TURNING, BORING_BARS,
   MODULUS_PSI, MODULUS_BY_MATERIAL, LD_LIMITS, CHUCK_SAFETY,
@@ -61,6 +62,7 @@ export function calculateTurning(input) {
   const warnings = [];
   const estimates = [];
   const notes = [];
+  const blockingReasons = [];
 
   if (!isTurnable(mat)) {
     return { error: `${mat.name} is not covered by the turning calculator (no published insert-turning data for wood or fiber composites).`, warnings: [], estimates: [] };
@@ -72,12 +74,17 @@ export function calculateTurning(input) {
     hp: num(machine.hp, 10), maxRpm: num(machine.maxRpm, 4000), minRpm: num(machine.minRpm, 20),
     maxIpm: num(machine.maxIpm, 400), chuckMaxRpm: num(machine.chuckMaxRpm, 0),
   };
-  const agg = clamp(aggressiveness, 0, 1);
-  const prio = priority === "finish" || priority === "speed" ? priority : "balanced";
+  const policy = processPolicy(aggressiveness, priority);
+  const agg = policy.setting;
+  const prio = policy.objective;
   // Same documented priority bias as the milling engine: speed stays on the raw
   // slider (a faster surface speed with a lighter feed improves finish), while
   // feed, depth of cut and HP budget move with the priority shift.
-  const aggQ = clamp(agg + (prio === "finish" ? -0.2 : prio === "speed" ? 0.15 : 0), 0, 1);
+  const aggQ = clamp(agg + (prio === "finish" ? -0.2 : prio === "life" ? -0.10 : 0), 0, 1);
+  for (const [key, fallback] of Object.entries({ hp: 10, maxRpm: 4000, minRpm: 20, maxIpm: 400 })) {
+    if (m[key] <= 0) m[key] = fallback;
+  }
+  if (m.minRpm > m.maxRpm) blockingReasons.push("Machine minimum RPM exceeds maximum RPM.");
   const matClass = mat.materialClass;
   const gradeClass = (matClass === "plastic" || matClass === "phenolic" || matClass === "composite") ? matClass : (matClass === "aluminum" || matClass === "nonferrous_soft" || GRADE_MULT[matClass]) ? matClass : "steel_mild";
 
@@ -91,7 +98,8 @@ export function calculateTurning(input) {
       machine: { hp: m.hp, maxRpm: m.maxRpm, minRpm: m.minRpm, maxIpm: m.maxIpm },
       pointAngle: 118,
     });
-    return { kind: "drill", drill: res, op, mat, warnings: [...(res.warnings || [])], estimates, notes: ["Lathe drilling feeds in inches per revolution; the table below converts the drill feed to IPR."], ipr: res.rpm ? r(res.ipm / res.rpm, 4) : null };
+    if (!res) return { error: "Enter a positive drill diameter.", warnings, estimates };
+    return { kind: "drill", drill: res, op, mat, policy, stockPlan: res.stockPlan, reasoning: res.reasoning, runnable: res.runnable, blockingReasons: res.blockingReasons, warnings: [...(res.warnings || [])], estimates, notes: ["Lathe drilling feeds in inches per revolution; the table below converts the drill feed to IPR."], ipr: res.rpm ? r(res.ipm / res.rpm, 4) : null };
   }
 
   const win = turningWindow(mat);
@@ -140,7 +148,7 @@ export function calculateTurning(input) {
   const absoluteRow = gradeId === "hss" && sfmRough; // HSS rows are already absolute SFM
   const rowWin = op.speedRow === "finish" ? (absoluteRow ? sfmFinish : win.finish) : (absoluteRow ? sfmRough : win.rough);
   const sfmWin = rowWin.map((v) => v * (absoluteRow ? 1 : (win.scale || 1)) * gradeMult);
-  const sfmBase = lerp(sfmWin[0], sfmWin[1], agg) * (op.sfmMult || 1);
+  const sfmBase = lerp(sfmWin[0], sfmWin[1], policy.speedPosition) * (op.sfmMult || 1);
   if (op.est) estimates.push(`${op.name}: the speed ratio versus plain turning (${Math.round((op.sfmMult || 1) * 100)}%) comes from the Ready Plastics per-operation table (rough turning 500–700 SFM vs grooving/parting 200–400 and threading 150–350) — applied to all materials as an estimate.`);
 
   // --- Feed -----------------------------------------------------------------
@@ -233,7 +241,7 @@ export function calculateTurning(input) {
     let apMax = shape.round ? 0.25 * ic : (2 / 3) * l * Math.sin((kappa * Math.PI) / 180);
     // HP-limited ap: HP = hpFactor x MRR, MRR = 12 x SFM x f x ap
     const hpFactor = num(mat.hpFactor, 1.0);
-    const hpBudget = m.hp * 0.85 * lerp(0.2, 1, aggQ); // 85% drive-line efficiency typical of spindle motors
+    const hpBudget = m.hp * Math.min(policy.powerFraction, lerp(0.20, 0.80, aggQ)); // ESTIMATE: shared application reserve, not material-specific efficiency
     // placeholder sfm for HP estimate (refined after RPM clamp)
     const apHp = hpBudget / (hpFactor * 12 * sfmBase * Math.max(feed, 1e-4));
     if (op.finishing) {
@@ -263,7 +271,9 @@ export function calculateTurning(input) {
   let sfm = sfmBase;
   const rpmIdeal = (12 * sfm) / (Math.PI * Dref);
   const rpmLimit = Math.min(m.maxRpm, m.chuckMaxRpm > 0 ? m.chuckMaxRpm : Infinity);
+  if (rpmLimit < m.minRpm) blockingReasons.push("Chuck maximum RPM is below machine minimum RPM. No feasible spindle range.");
   let rpm = clamp(rpmIdeal, m.minRpm, rpmLimit);
+  if (rpm * Math.PI * Dref / 12 > sfmWin[1] * (op.sfmMult || 1) * 1.01) blockingReasons.push("Minimum spindle RPM exceeds the generic turning speed window.");
   const rpmClamped = Math.abs(rpm - rpmIdeal) > 1;
   if (rpmClamped) {
     sfm = (rpm * Math.PI * Dref) / 12;
@@ -277,14 +287,17 @@ export function calculateTurning(input) {
     const zIpm = rpm * feed;
     if (zIpm > m.maxIpm) {
       const rpmT = m.maxIpm / feed;
-      rpm = Math.max(m.minRpm, Math.min(rpm, rpmT));
+      rpm = Math.floor(Math.min(rpm, rpmT));
+      if (rpm < m.minRpm) blockingReasons.push("No feasible threading RPM at machine minimum RPM and maximum pitch-locked feed.");
       sfm = (rpm * Math.PI * Dref) / 12;
       warnings.push(`Threading feed (RPM x pitch) exceeds the machine's ${m.maxIpm} IPM — RPM reduced to ${Math.round(rpm)}.`);
     }
   }
 
   // Parting off: speed falls as the diameter shrinks under G96, so G50 matters even more
-  const ipm = Math.min(rpm * feed, m.maxIpm);
+  rpm = Math.round(rpm);
+  sfm = rpm * Math.PI * Dref / 12;
+  let ipm = op.kind === "thread" ? rpm * feed : Math.min(rpm * feed, m.maxIpm);
   const feedPerRev = rpm > 0 ? ipm / rpm : feed;
 
   // --- MRR, HP, force ---------------------------------------------------------
@@ -297,10 +310,27 @@ export function calculateTurning(input) {
     // each thread pass is a form-tool cut: use the deepest pass increment x flank length as an upper bound
     mrr = 12 * sfm * feedPerRev * (threadInfo ? threadInfo.schedule[Math.min(1, threadInfo.schedule.length - 1)].increment : 0);
   }
-  const hpReq = mrr * hpFactor;
+  let hpReq = mrr * hpFactor;
+  const hpAtSpindle = m.hp * policy.powerFraction;
+  if (hpReq > hpAtSpindle && hpReq > 0) {
+    const scale = hpAtSpindle / hpReq;
+    if (["od", "id", "face"].includes(op.kind)) {
+      doc *= scale;
+      mrr *= scale;
+      notes.push("Depth reduced to the application HP budget; take additional levels. Check the chipbreaker minimum depth.");
+    } else {
+      const oldRpm = rpm;
+      rpm = Math.floor(rpm * scale);
+      sfm = rpm * Math.PI * Dref / 12;
+      ipm = rpm * feedPerRev;
+      mrr *= oldRpm > 0 ? rpm / oldRpm : 0;
+      if (rpm < m.minRpm) blockingReasons.push("Power-limited RPM falls below machine minimum. Change the tool or cut.");
+      notes.push("RPM and feed reduced together to the HP budget; pitch is preserved. Torque still needs checking.");
+    }
+    hpReq = mrr * hpFactor;
+  }
   // Tangential cutting force: Fc = HP x 33000 / V (V in ft/min); equivalent to specific force x chip area.
   const Fc = sfm > 0 ? (hpReq * 33000) / sfm : 0;
-  const hpAtSpindle = m.hp * 0.85;
   if (hpReq > hpAtSpindle) warnings.push(`Requires ~${hpReq.toFixed(1)} HP at the cutter but the machine delivers ~${hpAtSpindle.toFixed(1)} HP — reduce depth of cut or feed.`);
 
   // --- Surface finish prediction ------------------------------------------------
@@ -427,6 +457,23 @@ export function calculateTurning(input) {
     nose: rn, shape: shape.name, apMax: r(shape.round ? 0.25 * ic : (2 / 3) * ic * shape.edgeFactor * Math.sin((kappa * Math.PI) / 180), 3),
     maxFeedForNose: { lo: r(nose.lo, 4), hi: r(nose.hi, 4) },
   };
+  const allowance = !op.finishing && passes ? passes.finishAllowance || 0 : 0;
+  const stock = {
+    radial: op.kind === "od" || op.kind === "id" ? allowance : 0,
+    axial: op.kind === "face" ? allowance : 0, normal: 0, estimate: !op.finishing,
+    reason: op.finishing ? "Final surface: zero stock to leave. Incoming material must be a controlled finishing allowance."
+      : op.kind === "face" ? "Lathe facing: zero radial stock. Only axial stock can be reserved for another face finish."
+        : op.kind === "od" || op.kind === "id" ? "OD/ID allowance is radial per side; diameter allowance is twice this. The generic 0.015 in reserve is an engineering estimate, not a universal insert specification."
+          : "Thread/groove/part-off uses feature dimensions and its own pass schedule, not generic wall/floor stock.",
+  };
+  const reasoning = [
+    { label: op.name, text: `Generic ${win.rowName} turning window scaled for ${mat.name} and ${gradeUsed}. Not an exact insert-grade/chipbreaker catalog match.` },
+    { label: "Speed and feed", text: `${rpm.toFixed(0)} RPM at actual ${sfm.toFixed(1)} SFM. ${feedFinal.toFixed(5)} in/rev × RPM = ${finalIpm.toFixed(3)} IPM. ${op.kind === "thread" ? "Thread pitch is locked." : "Nose-radius/feed caps apply; confirm the chipbreaker window."}`, source: PROCESS_SOURCES.basics },
+    { label: "Stock to leave", text: stock.reason },
+    { label: "Slider and objective", text: `${prio}; setting ${Math.round(agg * 100)}%. HP budget at most ${Math.round(policy.powerFraction * 100)}% of entered HP. Tool life lowers cutting speed; surface quality controls feed marks; speed never disables caps.` },
+    { label: "Limits", text: "ESTIMATE: generic speed scaling, HP, force, deflection and chuck grip are screening models. No tool-life hours, chatter stability or tool-strength guarantee is calculated.", source: "https://www.sandvik.coromant.com/en-us/knowledge/general-turning/how-to-choose-correct-turning-insert" },
+  ];
+  warnings.push(...blockingReasons);
 
   return {
     kind: op.kind, op, mat, window: { rowName: win.rowName, scale: r(win.scale, 2), sfmRange: sfmWin.map((v) => Math.round(v * (op.sfmMult || 1))), fRange: fWin }, priority: prio, gradeUsed,
@@ -434,6 +481,7 @@ export function calculateTurning(input) {
     doc: r(doc, 4), docNote, width: r(width, 4), partInfo, threadInfo,
     mrr: r(mrr, 2), hpRequired: r(hpReq, 2), cuttingForce: r(Fc, 1), surface, passes, cutTimeMin: r(cutTime, 2),
     css, hold, boring, inserts, raFeedCap: r(raFeedCap, 4), feedNotes,
+    policy, stockPlan: stock, reasoning, runnable: blockingReasons.length === 0, blockingReasons,
     warnings, estimates, notes,
   };
 }

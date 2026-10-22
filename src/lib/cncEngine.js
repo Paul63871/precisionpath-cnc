@@ -7,6 +7,7 @@ import {
   RAMP_ANGLE_BY_CLASS, RAMP_ANGLE_DEFAULT, ENTRY_FEED_FACTOR,
   HELIX_DIA_DEFAULT_MULT, HELIX_DIA_MIN_MULT, HELIX_DIA_PRACTICAL_MULT, HELIX_DIA_SLUG_MULT,
 } from "./cncData";
+import { processPolicy, stockPlan, contourCorner, calculationReasoning } from "./processModel";
 
 // input shape:
 // { diameter (in), flutes (feed count), loc (in), toolMaterialId, coatingId, toolTypeId,
@@ -24,6 +25,16 @@ import {
 //   clampForce (lbf) — optional: the vise/fixture's actual rated clamping force,
 //   used to give a direct pass/fail instead of just reporting the requirement }
 export function calculate(input) {
+  // Optional fields may be cleared or partially typed. Ignore invalid optional
+  // numerics rather than letting Infinity/negative lengths poison the result.
+  input = { ...input };
+  const invalidFields = [];
+  for (const key of ["loc", "leadAngle", "cornerRadius", "includedAngle", "tipDiameter", "thickness", "neckDiameter", "pointAngle", "radialLoad", "axialDoc", "featureDepth", "gripDepth", "clampForce", "featureDiameter", "pilotDiameter", "targetRa", "insertIc", "helixDiameter", "previousToolDiameter", "previousStock", "insideCornerRadius", "cornerAngleDeg", "finishToolDiameter"]) {
+    if (input[key] != null && (!Number.isFinite(input[key]) || input[key] < 0)) {
+      invalidFields.push(key);
+      input[key] = undefined;
+    }
+  }
   const {
     diameter, flutes, loc, toolMaterialId, coatingId, toolTypeId,
     material, materialId, operationId, aggressiveness = 0.6, machine, override,
@@ -44,33 +55,54 @@ export function calculate(input) {
   const op = (baseOp.circularKind === "bore_rough" && !(pilotDiameter > 0))
     ? { ...baseOp, docMode: "slot", adaptive: false, slotDerate: true, solidStart: true }
     : baseOp;
-  const m = machine || { hp: 5, maxRpm: 10000, minRpm: 60, maxIpm: 200 };
-  const agg = clamp(aggressiveness, 0, 1);
+  if (!Number.isFinite(diameter) || diameter <= 0 || !Number.isFinite(flutes) || flutes <= 0) return null;
+  const m = { ...{ hp: 5, maxRpm: 10000, minRpm: 60, maxIpm: 200 }, ...machine };
+  for (const [k, fallback] of Object.entries({ hp: 5, maxRpm: 10000, minRpm: 60, maxIpm: 200 })) {
+    if (!Number.isFinite(m[k]) || m[k] <= 0) m[k] = fallback;
+  }
+  const policy = processPolicy(aggressiveness, priority);
+  const agg = policy.setting;
   // --- Optimize-for priority (finish quality vs. speed) ---
-  // "balanced" (also the default when `priority` is omitted) reproduces the
-  // manufacturer tool-bot benchmark behaviour (IMCO ToolBot etc.) the engine
-  // is regression-tested against. "finish" (the app default) biases every
-  // geometric/feed term toward surface quality: effective aggressiveness for
-  // chip load, stepover, axial depth and HP budget is shifted down 20 points,
-  // WHILE SURFACE SPEED STAYS ON THE UNSHIFTED SLIDER (higher speed with a
-  // lighter chip is what improves finish and avoids built-up edge — CNC
-  // Cookbook, Mitsubishi Materials). The 20-point shift is a documented shop-
-  // judgement bias, not a manufacturer constant; the finishing-specific
-  // limits further below (scallop stepover, feed-mark cap, stock-to-leave,
-  // spring pass) ARE sourced. "speed" shifts +15 points for MRR-focused work.
-  const prio = priority === "finish" || priority === "speed" ? priority : "balanced";
+  // ESTIMATE: objective-specific policy bias, not a manufacturer calibration.
+  // Surface quality moderates engagement, life moderates speed, and all
+  // objectives use the same limits. Speed mode no longer boosts past slider 1.
+  const prio = policy.objective;
   const finishFirst = prio === "finish";
-  const aggQ = clamp(agg + (prio === "finish" ? -0.20 : prio === "speed" ? 0.15 : 0), 0, 1);
-  // "Required Horse Power" on a machine spec sheet is the rated/nameplate
-  // figure, and manufacturer tool bots (e.g. IMCO ToolBot) size cuts against
-  // that full rated number directly — they don't separately discount for
-  // spindle mechanical losses in the number they display. To land on the same
-  // stepover/feed/RPM for a given rated HP, hpAtCutter here intentionally
-  // equals the rated HP; the ~13% real-world spindle efficiency loss (belts,
-  // gearbox, bearings) is instead folded into mat.hpFactor (see cncData.js),
-  // which is where it belongs physically — it's a property of how much
-  // material a given HP number actually removes, not a separate machine trait.
+  const aggQ = clamp(agg + (prio === "finish" ? -0.20 : prio === "life" ? -0.10 : 0), 0, 1);
+  const speedAgg = policy.speedPosition;
+  // Enter continuous usable spindle HP if known. A material power factor is
+  // not a spindle efficiency or torque curve; nameplate HP is only a proxy.
   const hpAtCutter = m.hp;
+  const inputWarnings = [];
+  const blockingReasons = [];
+  if (invalidFields.length) blockingReasons.push(`Invalid optional inputs ignored: ${invalidFields.join(", ")}. Correct them before cutting.`);
+  for (const [key, list] of [["operationId", OPERATIONS], ["toolTypeId", TOOL_TYPES], ["toolMaterialId", TOOL_MATERIALS], ["coatingId", COATINGS]]) {
+    if (input[key] && !list.some((item) => item.id === input[key])) blockingReasons.push(`Unknown ${key}: ${input[key]}. Choose a listed value.`);
+  }
+  if (!material && materialId && !PART_MATERIALS.some((item) => item.id === materialId)) blockingReasons.push("Unknown material ID; fallback numbers are illustrative only.");
+  if (m.minRpm > m.maxRpm) {
+    blockingReasons.push("Machine minimum RPM exceeds maximum RPM. Correct the machine profile.");
+    m.minRpm = m.maxRpm;
+  }
+  if ((baseOp.docMode === "drill" && !tt.isDrill) || (baseOp.docMode === "tap" && !tt.isTap) ||
+      (tt.isDrill && baseOp.docMode !== "drill") || (tt.isTap && baseOp.docMode !== "tap")) {
+    blockingReasons.push("Tool and operation do not match. A drill needs drilling; a tap needs tapping.");
+  }
+  if (tm.id === "pcd" && ["steel_mild", "steel_alloy", "stainless", "cast_iron", "titanium", "superalloy"].includes(mat.materialClass)) {
+    blockingReasons.push("PCD is not validated for this material class; choose a compatible tool grade and exact catalog data.");
+  }
+  if (op.id === "thread") blockingReasons.push("Thread milling needs a dedicated thread-mill profile and pitch model, not the selected generic cutter. Use exact-tool CAM/catalog data.");
+  if (baseOp.circular && featureDiameter > 0 && baseOp.circularKind !== "boss_rough" && baseOp.circularKind !== "boss_finish" && featureDiameter <= diameter) blockingReasons.push("Internal circular feature is not larger than the tool. There is no valid orbit clearance.");
+  if (tt.isTap && !["hss", "cobalt"].includes(tm.id)) blockingReasons.push("This generic tap model only covers HSS/cobalt taps; use exact catalog data for another substrate.");
+  if (coat.id === "diamond" && ["steel_mild", "steel_alloy", "stainless", "cast_iron"].includes(mat.materialClass)) blockingReasons.push("Diamond coating is not validated for this ferrous material; choose a suitable grade/coating.");
+  if (["corner_round", "concave_radius"].includes(tt.id) && input.cornerRadius >= diameter / 2) blockingReasons.push("Entered cutter radius leaves no valid core. Display geometry was clamped for UI stability; correct the actual tool dimensions.");
+  if (tt.id === "round_insert" && input.insertIc >= diameter) blockingReasons.push("Entered insert IC is too large for the cutter body. Correct the dimensions; clamped geometry is illustrative only.");
+  if (tt.id === "face_mill" && op.docMode !== "face") blockingReasons.push("This generic face-mill model only covers facing. Cutter-body shoulder/ramp clearance for other operations is not specified.");
+  if (tt.id === "slitting_saw" && op.docMode !== "slot") blockingReasons.push("This slitting-saw model is for straight slot/cut-off use, not generic pockets, holes or surface paths.");
+  if (["slitting_saw", "t_slot"].includes(tt.id) && op.docMode === "slot" && input.entryMethod !== "predrilled") blockingReasons.push("Confirm pre-opened/side entry for this saw or T-slot cutter. Do not ramp or plunge it into solid.");
+  if (["corner_round", "concave_radius"].includes(tt.id) && op.docMode !== "profile") blockingReasons.push("This form-cutter model covers controlled side/profile contact, not buried pocketing, facing or solid entry.");
+  if (tt.id === "t_slot" && !["profile", "slot"].includes(op.docMode)) blockingReasons.push("T-slot cutter needs a pre-opened slot and neck clearance; this operation is not modeled for it.");
+  if (["chamfer"].includes(tt.id) && !["chamfer", "engrave", "profile"].includes(op.docMode)) blockingReasons.push("Chamfer/V-bit needs a matching edge/engraving path, not general buried roughing.");
 
   // --- TAPPING (rigid tapping) ---
   // Physically distinct from every other operation in this engine: a tap's
@@ -91,12 +123,14 @@ export function calculate(input) {
     // diameter/pitch come from the selected thread designation when available;
     // fall back to the raw diameter/pitch the caller passed in for "custom".
     const tapMajor = thread.major != null ? thread.major : diameter;
-    const pitch = thread.pitch != null ? thread.pitch : input.pitch;
+    const rawPitch = thread.pitch != null ? thread.pitch : input.pitch;
+    const pitch = Number.isFinite(rawPitch) && rawPitch > 0 ? rawPitch : 0;
     const style = TAP_STYLES.find((s) => s.id === tapStyle) || TAP_STYLES[0];
     const hole = HOLE_TYPES.find((h) => h.id === holeType) || HOLE_TYPES[0];
 
     const warnings = [];
     if (!pitch || pitch <= 0) {
+      blockingReasons.push("A positive, finite thread pitch is required.");
       warnings.push("No thread pitch known — select a thread size or enter a custom pitch/TPI.");
     }
     // --- Hole type / chip direction mismatch check ---
@@ -126,29 +160,32 @@ export function calculate(input) {
     // like every other tool (uncoated taps run slower than TiN/TiCN-coated).
     let sfm;
     if (override?.sfm) {
-      sfm = override.sfm;
+      sfm = override.sfm * lerp(0.75, 1, speedAgg); // ESTIMATE: app intensity reserve, not exact catalog reproduction
     } else {
       const range = (mat.materialClass && TAP_SFM_BY_CLASS[mat.materialClass]) || TAP_SFM_BY_CLASS.steel_mild;
       const tapMatMult = TAP_TOOL_MATERIAL_MULT[tm.id] != null ? TAP_TOOL_MATERIAL_MULT[tm.id] : TAP_TOOL_MATERIAL_MULT.hss;
-      sfm = lerp(range[0], range[1], agg) * tapMatMult * coat.sfmMult * style.sfmMult;
+      sfm = lerp(range[0], range[1], speedAgg) * tapMatMult * Math.min(1, coat.sfmMult) * style.sfmMult;
     }
 
     // --- RPM --- straightforward SFM -> RPM at the tap's major diameter.
     let rpm = (sfm * 3.82) / tapMajor;
     const rpmIdeal = rpm;
     rpm = clamp(rpm, m.minRpm, m.maxRpm);
-    const rpmClamped = Math.abs(rpm - rpmIdeal) > 0.5;
+    let rpmClamped = Math.abs(rpm - rpmIdeal) > 0.5;
 
     // --- Feed (IPM) --- LOCKED to pitch. No chip load, no aggressiveness
     // term, no flute-count multiplier — this is the one true physical
     // constant of rigid tapping (F = RPM x pitch).
-    let ipm = pitch > 0 ? rpm * pitch : 0;
-    const ipmIdeal = ipm;
-    ipm = Math.min(ipm, m.maxIpm);
-    const ipmClamped = ipm < ipmIdeal - 0.01;
-    if (ipmClamped) {
-      warnings.push(`Machine max feed (${m.maxIpm} IPM) is below the pitch-locked tapping feed — rigid tapping REQUIRES the spindle to advance exactly RPM x pitch. If the machine truly cannot hit ${ipmIdeal.toFixed(2)} IPM at ${Math.round(rpm)} RPM, reduce RPM instead (never the feed alone) or the tap will strip the thread.`);
+    const feedLimitedRpm = pitch > 0 ? Math.floor(m.maxIpm / pitch) : 0;
+    if (pitch > 0 && rpm > feedLimitedRpm) {
+      rpm = Math.max(0, feedLimitedRpm);
+      rpmClamped = true;
+      warnings.push("Feed limit: spindle RPM AND feed reduced together to preserve thread pitch.");
+      if (rpm < m.minRpm) blockingReasons.push("No feasible tapping RPM within machine minimum RPM and maximum feed. Do not run this combination.");
     }
+    rpm = Math.round(rpm);
+    if (rpm * tapMajor / 3.82 > sfm * 1.01) blockingReasons.push("Machine minimum spindle speed exceeds the selected tapping speed.");
+    const ipm = pitch > 0 ? rpm * pitch : 0;
 
     // --- Thread depth / G84 cycle ---
     const threadDepth = (featureDepth && featureDepth > 0) ? featureDepth : (loc || tapMajor * 2);
@@ -157,7 +194,7 @@ export function calculate(input) {
     const tapping = {
       threadDepth: Number(threadDepth.toFixed(3)),
       depthRatio: Number(depthRatio.toFixed(1)),
-      pitch: pitch ? Number(pitch.toFixed(5)) : null,
+      pitch: pitch || null, // full precision: a rounded pitch must not change F = N*p
       tpi: thread.tpi || null,
       pitchMm: thread.pitchMm || null,
       threadName: thread.name,
@@ -183,29 +220,31 @@ export function calculate(input) {
     // MRR x hpFactor relationship, but the thread's minor-diameter annulus
     // rather than the full circle (a tap doesn't remove a full bore's worth
     // of material — only the thread groove volume).
-    const minorDiameter = pitch ? tapMajor - 1.0825 * pitch : tapMajor * 0.85;
+    if (pitch * 1.0825 >= tapMajor) blockingReasons.push("Thread pitch is inconsistent with tap diameter. Correct the thread specification.");
+    const minorDiameter = pitch ? Math.max(0, tapMajor - 1.0825 * pitch) : tapMajor * 0.85;
     const mrr = (Math.PI / 4) * (tapMajor * tapMajor - minorDiameter * minorDiameter) * ipm;
     let hpRequired = mrr * mat.hpFactor;
-    if (hpAtCutter > 0 && hpRequired > hpAtCutter) {
-      hpRequired = hpAtCutter;
-    }
+    if (hpRequired > hpAtCutter * policy.powerFraction) blockingReasons.push("Estimated tapping power exceeds the application budget. Confirm torque with tap and machine supplier.");
+    if (hole.id === "blind" && style.id === "spiral_point") blockingReasons.push("Spiral point chip direction is unsuitable for this blind-hole setup.");
+    if (style.id === "forming" && (isLaminate || mat.materialClass === "cast_iron")) blockingReasons.push("Form tapping is not supported for this brittle/laminated material.");
     if (coat.verified === false) warnings.push(`${coat.name} speed multiplier is an engineering estimate — no manufacturer speed chart is published for this coating.`);
     if (mat.hpFactorEstimate) warnings.push("Horsepower factor for this material is an engineering estimate, not sourced from a published handbook value.");
-    if (rpmClamped) warnings.push(rpm > rpmIdeal ? "Spindle minimum forced RPM above ideal — reduce SFM or use a larger tap." : "Spindle max RPM reached — ideal " + Math.round(rpmIdeal) + " RPM. Increase SFM or use a smaller tap.");
+    if (rpmClamped) warnings.push(rpm > rpmIdeal ? "Spindle minimum forced RPM above target. Check whether this tool/material speed is feasible." : "Spindle/feed cap reduced RPM from target " + Math.round(rpmIdeal) + ". Actual speed is lower; feed remains synchronized. Do not raise SFM to compensate.");
 
     return {
-      sfm: Math.round(sfm),
+      sfm: Number((rpm * tapMajor / 3.82).toFixed(2)),
+      targetSfm: Number(sfm.toFixed(2)),
       rpm: Math.round(rpm),
       chipLoad: tapping.pitch || 0,
       feedPerRev: tapping.pitch || 0, // tap feed per rev is locked to thread pitch
       programmedFpt: null,
-      ipm: Number(ipm.toFixed(2)),
+      ipm: Number(ipm.toFixed(5)),
       woc: Number(tapMajor.toFixed(3)),
       doc: Number(threadDepth.toFixed(3)),
       mrr: Number(mrr.toFixed(mrr < 0.01 ? 4 : 2)),
       hpRequired: Number(hpRequired.toFixed(2)),
       hpAvailable: m.hp,
-      hpUtilization: hpAtCutter > 0 ? Math.min(100, Math.round((hpRequired / hpAtCutter) * 100)) : 0,
+      hpUtilization: hpAtCutter > 0 ? Math.round((hpRequired / hpAtCutter) * 100) : 0,
       passes: null,
       stepdown: null,
       drilling: null,
@@ -216,7 +255,10 @@ export function calculate(input) {
       effectiveDiameter: Number(tapMajor.toFixed(3)),
       ballFeedCompensation: 1,
       sfmCapped: false,
-      warnings,
+      warnings: [...warnings, ...inputWarnings, ...blockingReasons],
+      policy, runnable: blockingReasons.length === 0 && pitch > 0, blockingReasons,
+      stockPlan: stockPlan(baseOp, diameter),
+      reasoning: calculationReasoning({ op: baseOp, mat, tool: tt, policy, rpm, actualSfm: rpm * tapMajor / 3.82, targetSfm: sfm, ipm, chipLoad: pitch || 0, fpt: pitch || 0, woc: tapMajor, doc: threadDepth, stock: stockPlan(baseOp, diameter), override, limits: "Tap grade, chamfer lead and blind-hole clearance require catalog confirmation." }),
     };
   }
 
@@ -401,6 +443,10 @@ export function calculate(input) {
   const userPinnedWoc = !!(op.adaptive && radialLoad && radialLoad > 0);
   if (userPinnedWoc) woc = radialLoad;
   if (op.docMode !== "drill" && !tt.isDrill && axialDoc && axialDoc > 0) doc = axialDoc;
+  if (!tt.isDrill && Number.isFinite(loc) && loc > 0 && doc > loc) {
+    inputWarnings.push(`Requested DOC exceeds ${loc.toFixed(4)} in cutting length; limited to LOC.`);
+    doc = loc;
+  }
 
   // --- Finishing quality targets (scallop / feed-mark limits) ---
   // Theoretical-to-real roughness: actual Rz runs ~3x the theoretical cusp
@@ -566,7 +612,7 @@ export function calculate(input) {
     const sched = RADIUS_PASS_SCHEDULE[nPass];
     if (!userPinnedWoc) woc = R;
     hemWocBounds = null; // form tools cut a fixed profile — no HP-driven stepover solve
-    if (!(axialDoc && axialDoc > 0)) doc = R * sched[0];
+    if (!(axialDoc && axialDoc > 0)) doc = Math.min(R * sched[0], loc > 0 ? loc : Infinity);
     radiusInfo = { kind: formKind, radius: R, pilotDiameter: pilot, effectiveDiameter: formEffD, engagement: eng.name, engagementMult: eng.mult, passes: nPass, passSchedule: sched.map((f) => Number((f * R).toFixed(4))) };
     radiusNotes.push(`Radius cutter: speed and chip load are referenced to the EFFECTIVE diameter ${formEffD.toFixed(3)}" (nominal ${diameter}"), per Harvey Tool's ${formKind === "corner_round" ? "corner-rounding" : "concave-radius"} chart. Engagement "${eng.name}" scales chip load ×${eng.mult}.`);
     radiusNotes.push(`Cut the radius in ${nPass} descending pass${nPass > 1 ? "es" : ""} (${sched.map((f) => (f * R).toFixed(3) + '"').join(", ")} of the ${R.toFixed(3)}" radius per pass, Harvey schedule); the first pass is shown as axial DOC. Climb mill, and finish with a light spring pass for a clean radius.`);
@@ -610,7 +656,7 @@ export function calculate(input) {
   // itself which is always 1.0).
   let sfm;
   if (override?.sfm) {
-    sfm = override.sfm * op.sfmMult;
+    sfm = override.sfm * Math.min(1, op.sfmMult) * lerp(0.75, 1, speedAgg);
   } else {
     // Materials that publish a dedicated ABSOLUTE drilling SFM window (phenolic
     // laminates: Ready Plastics 300-500 SFM) use it for drill ops, bypassing the
@@ -618,10 +664,11 @@ export function calculate(input) {
     // Phenolic speed windows are published for UNCOATED, polished C-2 carbide
     // (Ready Plastics) — that is the reference tool, so the metal-derived 0.72x
     // "uncoated" derate must not be applied on top of them.
-    const coatSfmMult = (mat.materialClass === "phenolic" && coat.id === "none") ? 1.0 : coat.sfmMult;
+    // A generic coating name must not boost a coated-carbide baseline.
+    const coatSfmMult = (mat.materialClass === "phenolic" && coat.id === "none") ? 1.0 : Math.min(1, coat.sfmMult);
     const useDrillRange = !!(mat.drillSfmRange && (op.docMode === "drill" || tt.isDrill));
     const [sfmMin, sfmMax] = useDrillRange ? mat.drillSfmRange : mat.sfmRange;
-    sfm = lerp(sfmMin, sfmMax, agg) * toolMatMult * coatSfmMult * (useDrillRange ? 1 : op.sfmMult) * tt.sfmMult;
+    sfm = lerp(sfmMin, sfmMax, speedAgg) * toolMatMult * coatSfmMult * (useDrillRange ? 1 : op.sfmMult) * tt.sfmMult;
     if (formKind) {
       // Harvey's radius-cutter charts publish ABSOLUTE speeds (same for coated and
       // uncoated), so replace the end-mill range lerp: class SFM scaled to the
@@ -630,15 +677,25 @@ export function calculate(input) {
       if (hs) {
         const mid = (mat.sfmRange[0] + mat.sfmRange[1]) / 2;
         const gradeScale = clamp(mid / classRefMid(mat.materialClass), 0.6, 1.3);
-        sfm = hs * gradeScale * lerp(0.85, 1.15, agg) * toolMatMult * op.sfmMult;
+        sfm = hs * gradeScale * lerp(0.85, 1.15, speedAgg) * toolMatMult * op.sfmMult;
       } else {
         sfm *= 0.7; // ESTIMATE: wide full-profile contact in plastics/wood/composites
       }
     }
   }
+  if (!tt.isDrill && Number.isFinite(loc) && loc > 0 && doc > loc) {
+    inputWarnings.push(`Axial DOC limited to cutting length ${loc.toFixed(4)} in. Clear deeper features in multiple levels.`);
+    doc = loc;
+    if (featureDepth > 0) {
+      passes = Math.ceil(featureDepth / doc);
+      stepdown = doc;
+    }
+  }
   // Standard 20% slotting speed derate (Kennametal, CGS Tool) — full-width
   // engagement generates more heat per flute pass than partial-width milling.
-  if (op.slotDerate) sfm *= 0.8;
+  // The slot operation already carries 0.8. Only apply the missing reduction
+  // to solid-entry bore operations (whose nominal op multiplier is 1.0).
+  if (op.slotDerate && op.sfmMult > 0.8) sfm *= 0.8 / op.sfmMult;
   // Hard ceiling: no combination of aggressiveness/operation/coating
   // multipliers should ever push a material past its own published
   // "aggressive" SFM by more than a small margin — stacking op.sfmMult (e.g.
@@ -647,7 +704,10 @@ export function calculate(input) {
   // ceiling (e.g. 660 SFM vs A36's stated 600 max), which is well outside
   // what the coating/material can actually sustain. Cap at 1.05x the
   // material's own sfmMax regardless of how the multipliers stack.
-  const sfmHardCap = mat.sfmRange[1] * 1.05;
+  // Apply a tool-grade-specific ceiling, not a solid-carbide ceiling to HSS/PCD.
+  const sfmHardCap = override?.sfm > 0 ? override.sfm : formKind ? sfm :
+    (tt.isDrill && mat.drillSfmRange ? mat.drillSfmRange[1] : mat.sfmRange[1]) * toolMatMult *
+    ((mat.materialClass === "phenolic" && coat.id === "none") ? 1 : Math.min(1, coat.sfmMult));
   const sfmCapped = sfm > sfmHardCap;
   if (sfmCapped) sfm = sfmHardCap;
 
@@ -655,6 +715,7 @@ export function calculate(input) {
   let rpm = (sfm * 3.82) / effectiveDiameter;
   const rpmIdeal = rpm;
   rpm = clamp(rpm, m.minRpm, m.maxRpm);
+  if (rpm * effectiveDiameter / 3.82 > sfmHardCap * 1.01) blockingReasons.push("Machine minimum RPM exceeds this tool/material speed ceiling. Confirm a suitable catalog rating before cutting.");
   const rpmClamped = Math.abs(rpm - rpmIdeal) > 0.5;
 
   // --- Chip load per tooth (or feed per revolution for drilling) ---
@@ -722,7 +783,7 @@ export function calculate(input) {
   // 20% utilization at agg=0 rather than 0%, since a near-zero HP target has
   // no meaningful closed-form solution (it would collapse WOC toward zero).
   let hpSolveNote = null;
-  const hpUtilizationTarget = lerp(0.20, 1.0, aggQ);
+  const hpUtilizationTarget = Math.min(policy.powerFraction, lerp(0.20, 0.80, aggQ));
   // Applies to HEM/adaptive roughing AND straight peripheral-roughing profile
   // ops (op.peripheralRough) — both populate hemWocBounds above and both want
   // the WOC traded against available HP the same way. Fixed-stepover profile
@@ -758,7 +819,7 @@ export function calculate(input) {
         if (rpmForFloor >= m.minRpm && rpmForFloor <= Math.max(m.maxRpm, sfmMaxRpm)) {
           rpm = clamp(rpmForFloor, m.minRpm, m.maxRpm);
           woc = floorWoc;
-          hpSolveNote = `Stepover held at a chip-evacuation-friendly ${Math.round(floorRatio * 100)}% of diameter and spindle speed backed down to ${Math.round(rpm)} RPM to land exactly on the targeted ${Math.round(hpUtilizationTarget * 100)}% of spindle power — this is how manufacturer tool bots size a cut, balancing stepover and speed together instead of maxing speed first.`;
+          hpSolveNote = `ESTIMATE: stepover held at the selected ${Math.round(floorRatio * 100)}%-diameter floor; RPM reduced toward the ${Math.round(hpUtilizationTarget * 100)}%-HP budget. This application optimization is not an exact manufacturer-toolbot reproduction.`;
         } else {
           woc = floorWoc;
           hpSolveNote = `Stepover reduced toward its ${Math.round(floorRatio * 100)}% practical minimum for this tool/material — even at that narrow engagement it may still be under the targeted ${Math.round(hpUtilizationTarget * 100)}% spindle utilization; consider a shallower axial DOC.`;
@@ -769,12 +830,13 @@ export function calculate(input) {
         if (rSolved > hemWocBounds.ceilingPct) {
           hpSolveNote = `Radial engagement capped at ${Math.round(hemWocBounds.ceilingPct * 100)}% of diameter (chip-evacuation ceiling) instead of the HP-solved ${Math.round(rSolved * 100)}% — this tool/material combo hits its stepover limit before using the targeted ${Math.round(hpUtilizationTarget * 100)}% of spindle power.`;
         } else {
-          hpSolveNote = `Radial engagement (${Math.round(rClamped * 100)}% of diameter) solved to use ${Math.round(hpUtilizationTarget * 100)}% of available spindle horsepower at this aggressiveness setting — this is how manufacturer tool bots size the stepover, not a fixed percentage.`;
+          hpSolveNote = `ESTIMATE: radial engagement (${Math.round(rClamped * 100)}% of diameter) solved toward the ${Math.round(hpUtilizationTarget * 100)}%-HP application budget, then limited by the generic engagement window.`;
         }
       }
     }
   }
 
+  rpm = Math.round(rpm);
   // --- Feed multipliers from tool geometry ---
   let feedMult = op.feedMult;
   const thinningNotes = [];
@@ -837,15 +899,16 @@ export function calculate(input) {
   // like a CAM post processor or the machine's own torque-limiting would in
   // practice. Skipped when hp is unknown/zero.
   let hpGovernorNote = null;
-  if (hpAtCutter > 0 && hpRequired > hpAtCutter * 1.005) {
-    const governorScale = hpAtCutter / hpRequired;
+  const hpBudget = hpAtCutter * hpUtilizationTarget;
+  if (hpAtCutter > 0 && hpRequired > hpBudget) {
+    const governorScale = hpBudget / hpRequired;
     ipm *= governorScale;
     mrr *= governorScale;
-    hpRequired = hpAtCutter;
-    hpGovernorNote = `Feed rate reduced ${Math.round((1 - governorScale) * 100)}% below the ideal chip-load target to stay within the machine's available power — radial engagement is already at its practical minimum for this tool/material, so speed had to give instead.`;
-  } else if (hpAtCutter > 0 && hpRequired > hpAtCutter) {
-    hpRequired = hpAtCutter; // clean up float noise just over the limit without a note
+    hpRequired = hpBudget;
+    hpGovernorNote = `Feed reduced ${Math.round((1 - governorScale) * 100)}% to the ${Math.round(hpUtilizationTarget * 100)}%-HP application budget. This estimated reserve is not a tool-breakage guarantee; reduce WOC/DOC if chip thickness becomes too low.`;
   }
+  const targetSfm = sfm;
+  sfm = rpm * effectiveDiameter / 3.82;
 
   // --- Workholding: required clamping force (slip / pull-out check) ---
   // Distinct from the deflection-style "overhang" check above: this is
@@ -883,24 +946,18 @@ export function calculate(input) {
     const safetyFactor = op.slotDerate ? 4 : 3;
     const requiredClampForce = (cuttingForce * safetyFactor) / jaw.mu;
     const ratedClampForce = clampForce && clampForce > 0 ? clampForce : null;
-    // The vise's RATED force (from its spec plate/manual) is the force the
-    // screw/mechanism can generate. But soft aluminum jaws (6061-T6) yield
-    // under their own clamping load well before a steel-jaw vise maxes out
-    // -- they reliably deliver only ~30-50% of an equivalent steel jaw's
-    // force before deforming (machally.com vise jaw selection guide,
-    // ctemag.com fixture considerations). So the force that actually reaches
-    // the part through an aluminum jaw is capped at jaw.forceDerate x the
-    // vise's rated force, not the full rated number -- this is a SEPARATE
-    // failure mode from friction (mu): the jaw itself can crush before the
-    // part ever slips.
-    const usableClampForce = ratedClampForce != null ? ratedClampForce * jaw.forceDerate : null;
+    // A universal 40% aluminum-jaw force limit cannot predict yielding without
+    // jaw dimensions, support, alloy/temper and contact area. Do not invent a
+    // material-only strength capacity. Friction check only, strength unverified.
+    const usableClampForce = ratedClampForce;
     const clampMargin = usableClampForce ? usableClampForce / requiredClampForce : null;
     workholding = {
       cuttingForce: Number(cuttingForce.toFixed(1)),
       requiredClampForce: Number(requiredClampForce.toFixed(1)),
       ratedClampForce,
       usableClampForce: usableClampForce != null ? Number(usableClampForce.toFixed(1)) : null,
-      forceDerate: jaw.forceDerate,
+      forceDerate: 1,
+      jawStrengthEvaluated: false,
       clampMargin: clampMargin != null ? Number(clampMargin.toFixed(2)) : null,
       jawTypeId: jaw.id,
       mu: jaw.mu,
@@ -910,7 +967,7 @@ export function calculate(input) {
       // aluminum jaw's own strength derate is what actually pushes the
       // usable force below the requirement -- i.e. the bottleneck is the
       // soft jaw material, not the vise mechanism itself.
-      jawLimited: usableClampForce != null && jaw.forceDerate < 1.0 && clampMargin < 1.0 && (ratedClampForce / requiredClampForce) >= 1.0,
+      jawLimited: false,
     };
   }
 
@@ -959,14 +1016,19 @@ export function calculate(input) {
       const fzEntry = chipLoad * (ENTRY_FEED_FACTOR[method] || 0.5);
       entry = {
         method, rampAngleDeg: rampDeg, rampBand: [band.lo, band.hi], rampBandSource: band.src,
-        rampAngleEstimate: !!band.estimate, entryDepth: Number(entryDepth.toFixed(4)), notes: [],
+        rampAngleEstimate: true, entryDepth: Number(entryDepth.toFixed(4)), notes: [
+          "ESTIMATE: the selected ramp angle is a class-level starting point, not the exact cutter's catalog ramp limit.",
+        ],
       };
       if (method === "predrilled") {
         entry.notes.push(pre ? "Pilot hole entered: the tool enters the existing hole, so no helix/ramp feed reduction applies at the start. Feed the first axial move only into open pilot." : "Pre-drilled / side entry: no ramp is programmed. Enter from a drilled hole at least 1.2x the cutter diameter, or from open air with an arc lead-in (Harvey: arcing enters from the side and ramps load gradually).");
       } else if (D > 0 && rpm > 0 && flutes > 0) {
-        const entryIpmEdge = Math.min(rpm * flutes * fzEntry, m.maxIpm);
-        entry.entryFpt = Number(fzEntry.toFixed(5));
-        entry.entryFeedFactor = ENTRY_FEED_FACTOR[method];
+        const entryIpmEdge = Math.min(rpm * flutes * fzEntry, m.maxIpm,
+          hpBudget / Math.max(1e-12, diameter * doc * mat.hpFactor));
+        entry.entryFpt = Number((entryIpmEdge / (rpm * flutes)).toFixed(7));
+        entry.entryTargetFpt = fzEntry;
+        entry.entryFeedFactor = entryIpmEdge / (rpm * flutes * chipLoad);
+        entry.entryNominalFactor = ENTRY_FEED_FACTOR[method];
         entry.rpm = Math.round(rpm);
         entry.entryEdgeIpm = Number(entryIpmEdge.toFixed(1));
         entry.feedPerRev = Number((entryIpmEdge / rpm).toFixed(5));
@@ -987,12 +1049,23 @@ export function calculate(input) {
           if (hole > D * HELIX_DIA_SLUG_MULT + 1e-9) {
             entryWarn.push(`Helix hole Ø${hole.toFixed(3)}\" is more than 2x the cutter — it leaves a Ø${(hole - 2 * D).toFixed(3)}\" core slug that can jam or break the tool (Sandvik: max hole in one spiral = 2 x D). Use a smaller helix and clear the rest with the pocket pass.`);
           }
-          const pathD = Math.max(hole - D, 0.001);
+          const pathD = hole - D; // positive after the minimum hole/cutter ratio check
           const pitchMax = Math.PI * pathD * tanA;
           const pitch = Math.min(doc, pitchMax);
           const actualDeg = Math.atan(pitch / (Math.PI * pathD)) * 180 / Math.PI;
-          const factor = Math.max(0.02, (hole - D) / hole);
-          const cl = entryIpmEdge * factor;
+          const factor = (hole - D) / hole;
+          let cl = entryIpmEdge * factor;
+          // MRR of a fully-cleared helical hole = (PI Dh^2/4) * Z feed.
+          // A large-hole core slug is not certified by this volumetric check.
+          const hpPerIpm = mat.hpFactor * hole * hole * pitch / (4 * pathD);
+          if (hpPerIpm > 0 && cl * hpPerIpm > hpBudget) {
+            cl = hpBudget / hpPerIpm;
+            entry.notes.push("Helix feed reduced further to the application power budget. Confirm bottom-edge ramp capability in the exact tool catalog.");
+          }
+          entry.entryEdgeIpm = Number((cl / factor).toFixed(5));
+          entry.entryFpt = cl / factor / (rpm * flutes);
+          entry.entryFeedFactor = entry.entryFpt / chipLoad;
+          entry.feedPerRev = cl / factor / rpm;
           const orbitsPerMin = cl / (Math.PI * pathD);
           entry.helixHoleDia = Number(hole.toFixed(4));
           entry.helixHoleMult = Number((hole / D).toFixed(2));
@@ -1002,6 +1075,7 @@ export function calculate(input) {
           entry.turns = Math.max(1, Math.ceil(entryDepth / Math.max(pitch, 1e-6)));
           entry.centerlineFactor = Number(factor.toFixed(3));
           entry.rampFeed = Number(cl.toFixed(1));
+          entry.programmedFeedPerRev = cl / rpm;
           entry.axialFeedIpm = Number((pitch * orbitsPerMin).toFixed(2));
           entry.axialIprSpindle = Number((pitch * orbitsPerMin / rpm).toFixed(5));
           if (pitch < doc * 0.999 && actualDeg < rampDeg + 0.05) entry.notes.push(`Pitch ${pitch.toFixed(4)}\" per orbit (${rampDeg}° on a Ø${pathD.toFixed(3)}\" path circle) is shallower than the ${doc.toFixed(3)}\" step-down — it takes ${entry.turns} turns to reach ${entryDepth.toFixed(3)}\".`);
@@ -1017,12 +1091,17 @@ export function calculate(input) {
           entry.notes.push("After the ramp, keep the reduced feed for about one cutter diameter of travel until the tool is fully engaged (Sandvik).");
         } else if (method === "plunge") {
           const plungeIpr = chipLoad * flutes * ENTRY_FEED_FACTOR.plunge;
-          const plungeIpm = Math.min(plungeIpr * rpm, m.maxIpm);
+          const plungeIpm = Math.min(plungeIpr * rpm, m.maxIpm,
+            hpBudget / Math.max(1e-12, Math.PI * D * D / 4 * mat.hpFactor));
           entry.plungeIpr = Number((plungeIpm / rpm).toFixed(5));
           entry.plungeIpm = Number(plungeIpm.toFixed(1));
           entry.rampFeed = entry.plungeIpm;
           entry.axialFeedIpm = entry.plungeIpm;
           entry.axialIprSpindle = entry.plungeIpr;
+          entry.entryEdgeIpm = entry.plungeIpm;
+          entry.entryFpt = plungeIpm / (rpm * flutes);
+          entry.entryFeedFactor = entry.entryFpt / chipLoad;
+          entry.feedPerRev = plungeIpm / rpm;
           entry.notes.push("Plunge feed = 50% of the normal chip load per revolution (Harvey: plunge chip load -50%). Use only center-cutting end mills; ramping or helixing is gentler and gives smaller, easier-to-clear chips.");
           if (!centerCutting) entryWarn.push("This cutter is not center-cutting — do NOT plunge it. Use a helical ramp into a pre-drilled hole.");
         }
@@ -1102,30 +1181,35 @@ export function calculate(input) {
   // for tools below ~3 mm leave ~2% so the edge still bites. Leaving more
   // than that "will result in lost productivity"; leaving less rubs.
   let finishPlan = null;
+  const plannedStock = stockPlan(baseOp, diameter, input.finishToolDiameter);
   const isMillingCut = !(op.docMode === "drill" || op.docMode === "tap" || tt.isDrill || tt.isTap);
   if (isMillingCut && op.id !== "engrave" && op.id !== "thread" && tt.id !== "slitting_saw") {
-    const stock = Math.max(0.002, diameter * (diameter < 0.125 ? 0.02 : 0.015));
     if (op.finishing) {
       finishPlan = {
         role: "finish",
-        springPass: true,
+        springPass: op.docMode !== "face",
         climb: true,
         freshTool: true,
         priority: prio,
         scallop,
         feedMarkCapped,
+        stockToLeaveRadial: 0, stockToLeaveAxial: 0, stockToLeaveNormal: 0,
         notes: [
-          "Climb mill the finish pass, take it with a fresh/dedicated tool, and repeat the final pass once at zero radial infeed (spring pass) to cancel tool deflection.",
+          plannedStock.reason,
+          "Climb milling and a dedicated finish tool can help. Use a spring pass only when deflection/repeatability warrants it; it is not mandatory and may rub.",
         ],
       };
     } else {
       finishPlan = {
         role: "rough",
-        stockToLeaveRadial: Number(stock.toFixed(4)),
-        stockToLeaveAxial: Number(stock.toFixed(4)),
+        stockToLeaveRadial: Number(plannedStock.radial.toFixed(5)),
+        stockToLeaveAxial: Number(plannedStock.axial.toFixed(5)),
+        stockToLeaveNormal: Number(plannedStock.normal.toFixed(5)),
+        allowanceEstimate: plannedStock.estimate,
         priority: prio,
         notes: [
-          `Leave ~${stock.toFixed(3)}" (1.5-2% of the tool diameter, Seco Tools) on walls and floors for the finish operation. Leaving more wastes time; leaving less makes the finish tool rub on work-hardened or deflected material.`,
+          plannedStock.reason,
+          "ESTIMATE: allowance uses 1.5% of the finish-tool diameter (or current tool if unknown). Seco's 1-2% finish-stock guidance is not a universal floor/material specification. Account for tolerance, roughness, deflection and minimum chip thickness.",
         ],
       };
     }
@@ -1135,10 +1219,9 @@ export function calculate(input) {
   // Cantilever beam: delta = F L^3 / (3 E I), I = pi d^4 / 64 with the flute
   // core taken as 0.8 D (same cantilever model as online-tools.work/metal/en/
   // tool-deflection and formulafactory.tools tool-deflection calculator).
-  // F is the TANGENTIAL cutting force (hp x 33000 / SFM), which is an upper
-  // bound on the radial force that actually pushes the tool off the wall, and
-  // L is the flute length (the real stickout is at least this long) — so this
-  // is a conservative screening number, not a measurement.
+  // F is an approximate tangential force, NOT a proven upper bound on radial
+  // force. L defaults to LOC, which can understate actual stickout. Assumed
+  // core diameter 0.8D and force direction make this an ESTIMATE, not a worst case.
   let deflection = null;
   if (isMillingCut && hpAtCutter > 0 && sfm > 0 && loc > 0) {
     const Fc = (hpRequired * 33000) / sfm;
@@ -1150,12 +1233,22 @@ export function calculate(input) {
   }
 
   // --- Warnings ---
-  const warnings = [...thinningNotes, ...circWarn, ...entryWarn];
+  const corner = contourCorner(input, { woc, ipm });
+  if (corner?.exceedsStepover) blockingReasons.push(corner.reason);
+  if (corner && !corner.fits) blockingReasons.push("Current cutter cannot interpolate the requested inside radius. Use a smaller cutter with clearance.");
+  if (corner && !corner.previousStockKnown) inputWarnings.push("Prior roughing wall stock was not entered. Corner estimate assumes zero wall stock; enter the actual CAM value.");
+  if (formKind && op.docMode === "slot") blockingReasons.push("Form/radius cutters must not slot or plunge into solid; use a matching side/form operation.");
+  if (entry && entry.method !== "predrilled" && ["face_mill", "round_insert"].includes(tt.id)) blockingReasons.push("Indexable solid entry needs an exact cutter ramp/plunge rating, which is not provided by this generic model. Use a verified pilot/side entry.");
+  if (entry?.helixHoleMult > 2) blockingReasons.push("A helix larger than twice the tool leaves a core slug. Clear it with a suitable strategy before running.");
+  if (entry?.helixHoleDia && featureDiameter > 0 && entry.helixHoleDia > featureDiameter + 1e-6) blockingReasons.push("Helix entry does not fit inside the entered feature diameter.");
+  if (override?.requiresCatalogReview) inputWarnings.push("Brand lookup is AI-assisted, not independently verified. Confirm material hardness, operation, engagement and whether the catalog feed already includes chip thinning before applying this result.");
+  const warnings = [...thinningNotes, ...circWarn, ...entryWarn, ...inputWarnings, ...blockingReasons];
+  if (workholding) warnings.push("Workholding is an estimated friction/slip screen only. Jaw bending/yield, contact pressure and dynamic holding strength are not calculated; enter geometry and supplier capacity separately.");
   if (mat.notes && mat.notes.length) for (const n of mat.notes) warnings.push(`${mat.name}: ${n}`);
   if (mat.abrasive && (tm.id === "hss" || tm.id === "cobalt")) warnings.push(`${mat.name} is abrasive — ${tm.name} will wear very quickly; use solid carbide (diamond-coated or PCD for production).`);
   if (mat.materialClass === "phenolic" && (tm.id === "hss" || tm.id === "cobalt")) warnings.push(`${mat.name}: ${tm.name} is viable only for low volume (< ~20 parts per operation) on paper/cotton phenolic — carbide (uncoated C-2, sharp, polished flutes) is the standard and holds life far longer. A dulling tool raises heat, which drives formaldehyde off-gassing and edge chipping (Ready Plastics phenolic guide). Speeds shown use an estimated HSS derate.`);
   if (mat.materialClass === "plastic" && clampForce && clampForce > 1500) warnings.push(`Plastics deform under clamping load that is routine for metal — your vise is rated ${Math.round(clampForce)} lbf. Torque it down just enough to hold (cutting forces in plastic are a few pounds), use wide flat soft jaws or vacuum, and re-measure after release (Ready Plastics: over-clamping bows/pinches nylon, PP, PTFE and Ertalyte).`);
-  if (finishFirst && op.finishing && deflection && deflection.estimateIn > deflection.limitIn) warnings.push(`Finish quality: estimated worst-case tool deflection is ${deflection.estimateIn.toFixed(4)}" (> ${deflection.limitIn}") at ${loc}" LOC — shorten the stickout, use a larger/stub tool, or add a spring pass; a deflected finish pass leaves taper and a step at the end of the cut.`);
+  if (finishFirst && op.finishing && deflection && deflection.estimateIn > deflection.limitIn) warnings.push(`Finish quality: screening deflection estimate ${deflection.estimateIn.toFixed(4)}" (> ${deflection.limitIn}") using LOC as length. Actual stickout/core and force direction are unknown; shorten the tool or use a stiffer setup.`);
   if (feedMarkCapped) warnings.push(`Finish quality: feed per tooth was reduced so the theoretical feed-mark cusp (fz²/4D) stays within the ${Math.round(raTargetIn * 1e6)} µin Ra target.`);
   if (sfmCapped) warnings.push(`SFM capped at ${Math.round(sfmHardCap)} (105% of ${mat.name}'s published range) — the stacked aggressiveness/operation/coating multipliers wanted a higher speed than this material and coating can realistically sustain.`);
   if (tt.id === "ball_end" && effectiveDiameter < diameter * 0.999) warnings.push(`Ball nose effective cutting diameter is ${effectiveDiameter.toFixed(3)}" at ${doc.toFixed(3)}" axial DOC (nominal diameter ${diameter}") — RPM and chip load are computed from this smaller effective diameter, not the nominal one, per standard ball-nose speed/feed correction.`);
@@ -1163,7 +1256,7 @@ export function calculate(input) {
   if (hpSolveNote) warnings.push(hpSolveNote);
   if (hpGovernorNote) warnings.push(hpGovernorNote);
   if (hpRequired > hpAtCutter) warnings.push(`Requires ~${hpRequired.toFixed(1)} HP but the machine has ${hpAtCutter} HP — reduce DOC/WOC or feed.`);
-  if (rpmClamped) warnings.push(rpm > rpmIdeal ? `Spindle minimum forced RPM above ideal — reduce SFM or use smaller tool.` : `Spindle max RPM reached — ideal ${Math.round(rpmIdeal)} RPM. Increase SFM or use larger diameter.`);
+  if (rpmClamped) warnings.push(rpm > rpmIdeal ? `Machine minimum RPM forced speed above target; verify tool/material limits before cutting.` : `Spindle max RPM reached (target ${Math.round(rpmIdeal)}). Actual cutting speed is lower and feed uses achieved RPM. Do not raise SFM to compensate.`);
   if (ipmClamped) warnings.push(`Machine max feed (${m.maxIpm} IPM) limits the programmed feed.`);
   if (loc && (op.docMode === "profile" || op.docMode === "hem") && doc > loc) warnings.push(`Per-pass axial DOC (${doc.toFixed(3)}") exceeds flute LOC (${loc}") — confirm chip evacuation.`);
   if (overhang && overhang.severity === "high") warnings.push(`Workholding: ${overhang.unsupportedHeight}" of this cut is above your ${overhang.gripDepth}" grip depth (${overhang.ratio}x the grip) — the workpiece itself is now the flexible cantilever, not just the tool. LANG Technik's vise-sizing rule of thumb caps workpiece height at ~2x the jaw/grip dimension for this reason. Rough to a support stub and finish after re-fixturing, use a taller vise step/soft jaws, add a tailstock or steady support, or cut in from the top down instead of a single full-height pass around the outside.`);
@@ -1188,11 +1281,12 @@ export function calculate(input) {
   return {
     sfm: Math.round(sfm),
     rpm: Math.round(rpm),
-    chipLoad: Number(chipLoad.toFixed(5)),
+    targetChipLoad: Number(chipLoad.toFixed(7)),
+    chipLoad: Number((tt.isDrill && rpm > 0 ? ipm / rpm : chipLoad).toFixed(7)),
     programmedFpt: programmedFpt != null ? Number(programmedFpt.toFixed(5)) : null,
-    ipm: Number(ipm.toFixed(1)),
-    woc: Number(woc.toFixed(3)),
-    doc: Number(doc.toFixed(3)),
+    ipm: Number(ipm.toFixed(5)),
+    woc: Number(woc.toFixed(6)),
+    doc: Number(doc.toFixed(6)),
     // Light-engagement ops (engrave, thread milling, pencil finishing, tiny
     // slitting-saw kerfs) legitimately remove well under 0.01 in3/min — a
     // fixed 2-decimal round was displaying those correct, nonzero MRR values
@@ -1220,6 +1314,10 @@ export function calculate(input) {
     finishPlan,
     deflection,
     entry,
+    policy, targetSfm: Number(targetSfm.toFixed(2)),
+    stockPlan: plannedStock, corner,
+    runnable: blockingReasons.length === 0, blockingReasons,
+    reasoning: calculationReasoning({ op: baseOp, mat, tool: tt, policy, rpm, actualSfm: sfm, targetSfm, ipm, chipLoad, fpt: programmedFpt || chipLoad, woc, doc, stock: plannedStock, override }),
     feedPerRev: (rpm > 0 && isFinite(ipm)) ? Number((ipm / rpm).toFixed(5)) : null,
     warnings,
   };

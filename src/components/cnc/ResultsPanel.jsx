@@ -1,6 +1,7 @@
 import React from "react";
 import { AlertTriangle, Gauge, Activity, Layers, Ruler, Zap, TrendingUp } from "lucide-react";
 import { UNITS, lenFromImp, feedFromImp, surfaceFromImp, powerFromImp, mrrFromImp } from "@/lib/units";
+import ProcessExplanation from "./ProcessExplanation";
 
 function Metric({ icon: Icon, label, value, unit, accent }) {
   return (
@@ -29,11 +30,12 @@ export default function ResultsPanel({ result, units = "imperial" }) {
       <div className="grid grid-cols-2 gap-3">
         <Metric icon={Gauge} label="Spindle Speed" value={result.rpm.toLocaleString()} unit="RPM" accent="text-brand" />
         <Metric icon={Activity} label="Feed Rate" value={feedFromImp(result.ipm, units).toLocaleString(undefined, { maximumFractionDigits: 1 })} unit={u.feed} accent="text-brand" />
-        <Metric icon={Layers} label={result.tapping ? "Thread Depth" : "Axial DOC"} value={fmt(lenFromImp(result.doc, units), 2)} unit={u.length} />
-        <Metric icon={Ruler} label={result.tapping ? "Major Ø" : "Radial WOC"} value={fmt(lenFromImp(result.woc, units), 3)} unit={u.length} />
-        <Metric icon={TrendingUp} label={result.tapping ? "Pitch" : result.drilling ? "Feed/Rev" : "Feed/Tooth"} value={result.tapping ? fmt(lenFromImp(result.tapping.pitch || 0, units), 4) : fmt(lenFromImp(result.programmedFpt ?? result.chipLoad, units), 4)} unit={result.tapping ? `${u.length}/rev${result.tapping.tpi ? ` (${result.tapping.tpi} TPI)` : ""}` : result.drilling ? `${u.length}/rev` : `${u.length}/tooth`} />
+        <Metric icon={Layers} label={result.tapping ? "Thread Depth" : "Axial DOC"} value={fmt(lenFromImp(result.doc, units), units === "metric" ? 3 : 5)} unit={u.length} />
+        <Metric icon={Ruler} label={result.tapping ? "Major Ø" : "Radial WOC"} value={fmt(lenFromImp(result.woc, units), units === "metric" ? 3 : 5)} unit={u.length} />
+        <Metric icon={TrendingUp} label={result.tapping ? "Pitch" : result.drilling ? "Feed/Rev" : "Feed/Tooth"} value={result.tapping ? fmt(lenFromImp(result.tapping.pitch || 0, units), 6) : fmt(lenFromImp(result.programmedFpt ?? result.chipLoad, units), units === "metric" ? 4 : 6)} unit={result.tapping ? `${u.length}/rev${result.tapping.tpi ? ` (${result.tapping.tpi} TPI)` : ""}` : result.drilling ? `${u.length}/rev` : `${u.length}/tooth`} />
         <Metric icon={Zap} label="Power" value={fmt(power, 2)} unit={`/ ${fmt(powerAvail, 1)} ${u.power}`} accent={hpColor} />
       </div>
+      <ProcessExplanation result={result} units={units} />
       {result.feedPerRev != null && !result.tapping && !result.drilling && (
         <div className="rounded-lg border border-border bg-muted/30 px-3 py-2 flex items-center justify-between text-xs">
           <span className="text-muted-foreground">Feed per revolution (spindle) = feed ÷ RPM</span>
@@ -199,7 +201,7 @@ export default function ResultsPanel({ result, units = "imperial" }) {
         <div className="rounded-lg border border-border bg-card px-4 py-3 space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{result.finishPlan.role === "finish" ? "Finish Pass Plan" : "Finish Allowance"}</span>
-            <span className="text-[10px] font-medium rounded bg-muted px-1.5 py-0.5 text-muted-foreground uppercase">{result.priority === "finish" ? "Finish priority" : result.priority === "speed" ? "Speed priority" : "Balanced"}</span>
+            <span className="text-[10px] font-medium rounded bg-muted px-1.5 py-0.5 text-muted-foreground uppercase">{result.priority === "finish" ? "Finish priority" : result.priority === "life" ? "Tool life" : result.priority === "speed" ? "Speed priority" : "Balanced"}</span>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
             {result.finishPlan.stockToLeaveRadial != null && (
@@ -211,11 +213,11 @@ export default function ResultsPanel({ result, units = "imperial" }) {
             {result.finishPlan.scallop && (
               <>
                 <div className="flex justify-between"><span className="text-muted-foreground">Scallop height</span><span className="font-mono text-right">{fmt(lenFromImp(result.finishPlan.scallop.cuspHeightIn, units) * (units === "metric" ? 1000 : 1e6), 1)} {units === "metric" ? "µm" : "µin"}</span></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">Predicted Ra (theory → real)</span><span className="font-mono text-right">{fmt(result.finishPlan.scallop.raTheoreticalUin, 0)} → {fmt(result.finishPlan.scallop.raRealisticUin, 0)} µin</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Ra model (theory → estimate)</span><span className="font-mono text-right">{fmt(result.finishPlan.scallop.raTheoreticalUin, 0)} → {fmt(result.finishPlan.scallop.raRealisticUin, 0)} µin</span></div>
               </>
             )}
             {result.deflection && (
-              <div className="flex justify-between gap-3 sm:col-span-2"><span className="text-muted-foreground">Tool deflection (worst-case est.)</span><span className={`font-mono ${result.deflection.estimateIn > result.deflection.limitIn ? "text-destructive" : ""}`}>{fmt(lenFromImp(result.deflection.estimateIn, units), units === "metric" ? 4 : 5)} {u.length}</span></div>
+              <div className="flex justify-between gap-3 sm:col-span-2"><span className="text-muted-foreground">Tool deflection (screen estimate)</span><span className={`font-mono ${result.deflection.estimateIn > result.deflection.limitIn ? "text-destructive" : ""}`}>{fmt(lenFromImp(result.deflection.estimateIn, units), units === "metric" ? 4 : 5)} {u.length}</span></div>
             )}
           </div>
           {result.finishPlan.notes.map((n, i) => (<p key={i} className="text-[11px] text-muted-foreground leading-relaxed">• {n}</p>))}

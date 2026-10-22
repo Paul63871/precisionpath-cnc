@@ -792,33 +792,22 @@ export const HOLE_TYPES = [
 // grip); "wet" (flood coolant pooling at the jaw face) is applied as a note
 // only, since machally.com's own guidance is that coolant residue can drop
 // mu by roughly 30%, which is a REDUCTION in available grip — using dry mu
-// as the default is the conservative (safe) choice for a warning system.
+// as the default is NOT conservative for a coolant-wet contact. These
+// coefficients are ESTIMATES; verify actual grip under the operating condition.
 // Source (independent workholding-focused technical writeup, cites
 // Sandvik/Kennametal application data for the force side of the same
 // calculation used below in cncEngine.js):
 // https://machally.com/us/blog/workholding-clamping-force-calculation/
 // mu = friction/grip coefficient used in the slip-prevention clamping-force
 // check (cncEngine.js): F_clamp_required = F_cut x safetyFactor / mu.
-// forceDerate = fraction of the vise's RATED clamping force this jaw can
-// actually deliver before the jaw itself yields/deforms, independent of mu.
-// Steel jaws (hardened smooth, serrated, or steel soft jaws bored in-situ)
-// are strong enough to pass the vise's full rated force through (derate 1.0).
-// Aluminum (6061-T6) soft/step jaws are the standard choice for finished,
-// anodized, or polished parts that can't tolerate steel jaw marks, but the
-// jaw material itself only reliably holds ~30-50% of an equivalent steel
-// jaw's clamping force before yielding -- so even a correctly-rated vise
-// can still lose the part if the ALUMINUM JAW crushes before the vise maxes
-// out. forceDerate=0.4 uses the LOWER end of that cited 30-50% range (the
-// conservative choice for a slip/pull-out warning system -- overstating
-// usable force is the unsafe direction, understating it just means an
-// extra "check your setup" warning on a borderline cut). Source:
-// machally.com vise jaw selection guide, ctemag.com fixture considerations,
-// industrialmonitordirect.com soft-jaw compression data.
+// forceDerate is retained as 1 for schema compatibility ONLY. It is not a jaw
+// strength rating. Material alone cannot predict force transmission or yield;
+// jaw geometry, temper, support, contact pressure and vendor capacity are needed.
 export const WORKHOLDING_JAW_TYPES = [
   { id: "smooth_steel", name: "Smooth hard jaw (steel)", mu: 0.20, forceDerate: 1.0 },
   { id: "serrated", name: "Serrated / waffle / pyramid jaw (steel)", mu: 0.50, forceDerate: 1.0 },
   { id: "soft_jaw_steel", name: "Soft jaw, steel (1018/12L14), bored to part", mu: 0.50, forceDerate: 1.0 },
-  { id: "soft_jaw_aluminum", name: "Soft jaw, aluminum (6061-T6), bored to part", mu: 0.25, forceDerate: 0.4 },
+  { id: "soft_jaw_aluminum", name: "Soft jaw, aluminum (6061-T6), bored to part", mu: 0.25, forceDerate: 1.0 },
   { id: "grippy_plate", name: "Diamond-coated / grippy plate (steel)", mu: 0.65, forceDerate: 1.0 },
 ];
 

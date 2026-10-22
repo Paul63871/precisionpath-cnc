@@ -1,0 +1,17 @@
+{
+  "date": "2026-10-22T18:08:46.407Z",
+  "materialCount": 49,
+  "toolTypeCount": 13,
+  "millingOperationCount": 29,
+  "turningOperationCount": 12,
+  "fullCrossProductCases": 221676,
+  "matrixCases": 400036,
+  "millingCases": 400238,
+  "turningCases": 42336,
+  "turningUnsupported": 5184,
+  "checks": 6256554,
+  "blocked": 142461,
+  "failures": 0,
+  "errors": [],
+  "qualification": "Numerical/logic audit only; not physical proof or exact manufacturer matching."
+}
