@@ -1,5 +1,6 @@
 import React from "react";
 import { lenFromImp, feedFromImp, UNITS } from "@/lib/units";
+import FinishingCompanion from "./FinishingCompanion";
 const fmt = (n, places = 3) => Number(n || 0).toLocaleString(undefined, { maximumFractionDigits: places });
 
 export default function ProcessExplanation({ result, units = "imperial" }) {
@@ -36,12 +37,18 @@ export default function ProcessExplanation({ result, units = "imperial" }) {
             <div className="flex justify-between gap-3"><dt>Straight-wall stock</dt><dd className="font-mono">{len(corner.straightStock)}</dd></div>
             <div className="flex justify-between gap-3"><dt>Corner stock, bisector</dt><dd className="font-mono">{len(corner.cornerStock)}</dd></div>
             <div className="flex justify-between gap-3"><dt>Planned radial pass</dt><dd className="font-mono">{len(corner.nominalWoc)}</dd></div>
-            {corner.cornerFeedIpm != null && <div className="flex justify-between gap-3"><dt>Inside-arc centerline feed</dt><dd className="font-mono">{fmt(feedFromImp(corner.cornerFeedIpm, units), 2)} {u.feed}</dd></div>}
+            <div className="flex justify-between gap-3"><dt>Straight-wall feed</dt><dd className="font-mono">{fmt(feedFromImp(corner.straightFeedIpm, units), 2)} {u.feed}</dd></div>
+            {corner.cornerFeedIpm != null && <div className="flex justify-between gap-3"><dt>Inside-arc centerline feed</dt><dd data-testid="corner-feed-output" className="font-mono">{fmt(feedFromImp(corner.cornerFeedIpm, units), 2)} {u.feed} ({fmt(corner.feedPercent, 1)}%)</dd></div>}
           </dl>
+          <p className="text-xs font-semibold">Feed strategy: {corner.feedMode === "cap" ? corner.userFeedCapPercent != null ? `radius correction, capped at ${fmt(corner.userFeedCapPercent, 1)}% of straight feed` : "radius correction; enter a valid feed cap" : corner.feedMode === "rest" ? "rest-clear / semi-finish first" : "automatic radius correction"}</p>
+          {corner.feedBlockReason && <p className="text-xs">{corner.feedBlockReason}</p>}
+          {corner.cornerFeedIpm == null && <p data-testid="corner-feed-withheld" className="text-xs font-semibold">No single-pass corner feed issued. Resolve the stock, geometry or strategy condition first.</p>}
+          <p className="text-xs text-muted-foreground leading-relaxed">Automatic feed = straight-wall feed × (inside radius − cutter radius) / inside radius. A custom cap never raises this value. This is a centerline kinematic correction, not constant-engagement simulation or a guaranteed tool-protection limit. Use smooth CAM feed transitions and verify actual contact; very low feeds may rub.</p>
           <p className="text-xs leading-relaxed">{corner.reason}</p>
           <p className="text-[11px] text-muted-foreground leading-relaxed">{corner.is3D ? "3D: only a planar cross-section is modeled. " : ""}Assumes tangent walls, a circular corner and the prior cutter reaching both walls. Bisector stock is not a full engagement-angle calculation. Verify stock in CAM; a feed reduction alone cannot establish safety.</p>
         </section>
       )}
+      <FinishingCompanion plan={result.companionFinish} units={units} />
       {!!result.reasoning?.length && (
         <details className="rounded-lg border border-border bg-card p-3">
           <summary className="cursor-pointer text-xs font-semibold min-h-[32px]">Why these recommendations?</summary>

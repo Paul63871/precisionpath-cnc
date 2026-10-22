@@ -22,6 +22,7 @@ text += table(["Item", "Actual result"], [
   ["Extra dimensional / bad-input cases", A.millingCases - A.matrixCases],
   ["Total milling/hole calculation cases", A.millingCases],
   ["Turning cases attempted", A.turningCases],
+  ["Additional linked finishing calculations checked", A.companionCases || 0],
   ["Explicit unsupported turning cases", A.turningUnsupported],
   ["Blocked milling/hole cases (included in counts, NOT certified cuts)", A.blocked],
   ["Numerical assertions", A.checks],

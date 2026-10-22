@@ -68,7 +68,9 @@ export function stockPlan(op, diameter, finishDiameter = 0) {
 
 export function contourCorner(input, result) {
   const { operationId = "", previousToolDiameter, previousStock, insideCornerRadius, cornerAngleDeg } = input;
-  if (!( /contour|waterline/.test(operationId) || operationId === "3d_pocket") || !(positive(previousToolDiameter) > 0)) return null;
+  // No internal corner, no corner model. A prior cutter alone must not turn
+  // a straight/outside contour into an impossible zero-radius inside corner.
+  if (!( /contour|waterline/.test(operationId) || operationId === "3d_pocket") || !(positive(previousToolDiameter) > 0) || !(positive(insideCornerRadius) > 0)) return null;
   const D = positive(input.diameter);
   const R = positive(insideCornerRadius);
   const s = Number.isFinite(previousStock) && previousStock >= 0 ? previousStock : 0;
@@ -85,14 +87,30 @@ export function contourCorner(input, result) {
   const fits = R > D / 2;
   const factor = fits ? (R - D / 2) / R : 0; // Kennametal ID centerline correction
   const restPassesEstimate = nominal > 0 ? Math.ceil(cornerStock / nominal) : null;
+  const stockKnown = Number.isFinite(previousStock) && previousStock >= 0;
+  const feedMode = input.cornerFeedMode || "auto";
+  const validMode = ["auto", "cap", "rest"].includes(feedMode);
+  const capValid = Number.isFinite(input.cornerFeedPercent) && input.cornerFeedPercent > 0 && input.cornerFeedPercent <= 100;
+  const feedBlockReason = !validMode ? "Choose a listed inside-corner feed strategy."
+    : !stockKnown ? "Enter actual previous radial stock (including zero) before using a corner-feed recommendation."
+      : feedMode === "rest" ? "Rest-clear / semi-finish first is selected. Verify the remaining stock in CAM, then select a feed strategy for the final pass."
+        : feedMode === "cap" && !capValid ? "Enter a corner feed cap greater than 0 and no more than 100 percent of straight-wall feed."
+          : null;
+  const geometricFeed = result.ipm * factor;
+  const limitedFeed = feedMode === "cap" && capValid
+    ? Math.min(geometricFeed, result.ipm * input.cornerFeedPercent / 100) : geometricFeed;
   return {
-    previousToolDiameter, previousStock: s, previousStockKnown: Number.isFinite(previousStock) && previousStock >= 0,
+    previousToolDiameter, previousStock: s, previousStockKnown: stockKnown,
     radius: R, angle, previousRadius, straightStock: straight, cornerStock,
     nominalWoc: nominal, exceedsStepover: excess, fits,
     restPassesEstimate, centerlineFactor: factor,
     // No single-pass feed recommendation when stock exceeds intended WOC.
     // Slowing alone cannot certify a deep, suddenly-engaged inside corner.
-    cornerFeedIpm: fits && !excess ? result.ipm * factor : null,
+    cornerFeedIpm: fits && !excess && !feedBlockReason ? limitedFeed : null,
+    feedMode, feedBlockReason, straightFeedIpm: result.ipm,
+    geometricFeedIpm: fits ? geometricFeed : null,
+    feedPercent: fits && !excess && !feedBlockReason && result.ipm > 0 ? limitedFeed / result.ipm * 100 : null,
+    userFeedCapPercent: feedMode === "cap" && capValid ? input.cornerFeedPercent : null,
     estimate: true, is3D: /3d_/.test(operationId),
     reason: excess
       ? "Corner stock exceeds the calculated radial pass. Use rest/adaptive clearing or semi-finishing first; do not run the straight-wall feed into this corner."

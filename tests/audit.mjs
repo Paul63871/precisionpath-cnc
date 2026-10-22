@@ -15,9 +15,23 @@ const built = await build({
 });
 const M = await import(`data:text/javascript;base64,${Buffer.from(built.outputFiles[0].text).toString("base64")}`);
 const { calculate, calculateTurning, PART_MATERIALS, TOOL_TYPES, TOOL_MATERIALS, COATINGS, OPERATIONS, TURNING_OPERATIONS, TURNING_GRADES, contourCorner, processPolicy } = M;
-let checks = 0, cases = 0, blocked = 0, errors = [];
+let checks = 0, cases = 0, blocked = 0, companionCases = 0, errors = [];
 const check = (c, message) => { checks++; if (!c && errors.length < 35) errors.push(message); };
 const base = { diameter: 0.5, flutes: 4, loc: 1, toolMaterialId: "carbide", coatingId: "altin", toolTypeId: "end_mill", materialId: "alum_6061", operationId: "2d_contour_rough", machine: { hp: 10, maxRpm: 12000, minRpm: 20, maxIpm: 400 }, threadId: "unc_1_4_20" };
+function verifyCompanions(parent, p, label) {
+  for (const step of parent.companionFinish?.steps || []) {
+    companionCases++;
+    const r = step.result;
+    for (const key of ["sfm", "rpm", "ipm", "doc", "hpRequired"]) check(Number.isFinite(r[key]) && r[key] >= 0, `${label}/finish/${key}`);
+    check(r.rpm <= p.machine.maxRpm + 1, `${label}/finish/max RPM`);
+    check(r.ipm <= p.machine.maxIpm + .011, `${label}/finish/max feed`);
+    check(r.hpRequired <= p.machine.hp * r.policy.powerFraction + .011, `${label}/finish/HP reserve`);
+    check(r.stockPlan.radial === 0 && r.stockPlan.axial === 0 && r.stockPlan.normal === 0, `${label}/finish/zero leave`);
+    check(!r.companionFinish, `${label}/finish/no recursion`);
+    check(parent.runnable !== false || r.runnable === false, `${label}/finish/blocked parent retained`);
+    if (p.loc > 0 && !r.kind) check(r.doc <= p.loc + 1e-6, `${label}/finish/cutting length`);
+  }
+}
 function verify(r, p, label) {
   cases++;
   check(!!r && !r.error, `${label}: missing result`);
@@ -32,6 +46,7 @@ function verify(r, p, label) {
   check(r.reasoning?.length >= 5, `${label}: reasoning missing`);
   check(r.stockPlan && Number.isFinite(r.stockPlan.radial), `${label}: stock plan missing`);
   if (p.loc > 0 && !r.drilling && !r.tapping) check(r.doc <= p.loc + 1e-6, `${label}: cutting length`);
+  verifyCompanions(r, p, label);
 }
 
 // Every material × tool TYPE × operation × priority × slider at 0, 60, 100%.
@@ -102,8 +117,9 @@ for (const mat of PART_MATERIALS) for (const op of TURNING_OPERATIONS) for (cons
   check(t.reasoning?.length >= 5, "Turning reasoning");
   if (t.kind === "face") check(t.stockPlan.radial === 0, "Turning face zero radial stock");
   if (t.kind === "thread") check(Math.abs(t.ipm - t.rpm * t.feedIpr) < 0.012, "Thread pitch retained");
+  verifyCompanions(t, p, `turn/${mat.id}/${op.id}/${grade.id}`);
 }
-const receipt = { date: new Date().toISOString(), materialCount: PART_MATERIALS.length, toolTypeCount: TOOL_TYPES.length, millingOperationCount: OPERATIONS.length, turningOperationCount: TURNING_OPERATIONS.length, fullCrossProductCases, matrixCases, millingCases: cases, turningCases, turningUnsupported, checks, blocked, failures: errors.length, errors, qualification: "Numerical/logic audit only; not physical proof or exact manufacturer matching." };
+const receipt = { date: new Date().toISOString(), materialCount: PART_MATERIALS.length, toolTypeCount: TOOL_TYPES.length, millingOperationCount: OPERATIONS.length, turningOperationCount: TURNING_OPERATIONS.length, fullCrossProductCases, matrixCases, millingCases: cases, turningCases, turningUnsupported, companionCases, checks, blocked, failures: errors.length, errors, qualification: "Numerical/logic audit only; not physical proof or exact manufacturer matching." };
 await writeFile("tests/audit-results.json", JSON.stringify(receipt, null, 2));
 console.log(JSON.stringify(receipt, null, 2));
 assert.equal(errors.length, 0, "Audit failures require review");

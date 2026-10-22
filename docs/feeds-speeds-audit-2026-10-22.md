@@ -32,6 +32,27 @@ These are application changes established by code review and tests. They do not 
 
 ## Where the numbers come from
 
+### Linked roughing and finishing update
+
+The inside-corner radius is optional. Blank or zero means no inside-corner model, even when a previous cutter and wall stock are entered; a positive radius enables the check when a previous cutter is provided. A positive but infeasible radius still blocks the recommendation. This does not assert that unentered corners are clear.
+
+Roughing operations with a positive finishing reserve now produce companion finishing calculations, not copied roughing settings. Each calculation selects the appropriate finish operation, honors the selected objective with the same intensity and machine limits (Surface quality if no objective is supplied), removes the reserved incoming stock, and leaves zero on the finished surface. Roughing engagement overrides do not carry into finishing. A user-supplied finish target is retained; otherwise milling uses a geometric Ra target of 32 µin, or 63 µin in Productivity mode, as an explicit application default rather than a finish guarantee.
+
+- **Wall finish:** incoming radial allowance becomes finishing radial engagement; feature height is split into supported axial levels.
+- **Face/floor finish:** incoming axial allowance becomes the total finishing depth, split into levels if necessary. Facing radial stock to leave remains zero; radial cutting width is a different quantity.
+- **Pocket/adaptive roughing:** separate wall and planar-floor finishing estimates avoid treating wall stock and floor stock as the same cut. Sculpted geometry requires CAM review.
+- **3D normal stock:** the companion surface calculation is explicitly a conditional horizontal reference, not a conversion valid for all slopes or tool orientations.
+- **Turning:** rough OD, ID and face operations reserve the lesser of 0.015 in and half the available stock. This is application policy, not universal insert guidance. The finishing start diameter reflects the roughing exit diameter; facing consumes only the axial reserve. Thin finishing cuts retain nose-radius/minimum-engagement cautions.
+- **Tool assumptions:** the current cutter/insert is assumed. Entering another finish diameter recalculates the provisional engagement and speed/feed, but retains unprovided tool properties and marks the plan not runnable pending exact-tool review.
+- **Conditional strategies:** slot-width clearance, form-cutter contact and sculpted/multi-axis contact are not inferred from missing geometry. These cases expose review conditions instead of silently approving the generic calculation.
+- **No false approval:** a blocked roughing setup cannot produce an approved linked finishing step. Corner stock exceeding the finish engagement still requires rest clearing; reducing feed alone is not a solution.
+
+The reserve remains an estimate. Seco's diameter-based finishing guidance does not establish a universal allowance for every material, floor, form cutter or lathe insert ([Seco finish-stock discussion](https://www.secotools.com/article/finish_stock_allowance_with_solid_end_mills)). Both roughing and finishing require exact-tool limits, actual stock verification and controlled prove-out.
+
+The new linked-finishing regression checks optional radius behavior, every stock-bearing milling operation, independent pocket wall/floor passes, stock-consistent engagement, no recursive finish plans, blocked-parent propagation, different-tool review, short cutting length and OD/ID/face stock transitions. The main numerical audit also checks the generated finishing outputs for finite values, machine/power limits, zero finishing allowance and blocked-state propagation; its receipt below reports these additional calculations separately.
+
+The targeted linked-finishing regression passed 327 assertions, covering automatic inside-corner feed correction, custom caps, rest-first selection, missing stock and invalid cap inputs across 2D and 3D contours. The primary audit checks generated finishing calculations separately from its base cases; all counts are software invariants, not evidence of measured tool life or a physical cutting trial.
+
 ### Standard equations
 
 The basic kinematic equations are not proprietary tool-company algorithms. Michigan Drill publishes the standard relationships among diameter, cutting speed, RPM, feed/tooth, tooth count, feed/minute and feed/revolution ([Michigan Drill speed, feed and power equations](https://michigandrill.com/catalog/technical_data_milling_calcs.php)).
@@ -123,9 +144,20 @@ For generic milling roughing, the app provisionally suggests 1.5% of the planned
 
 Therefore the allowance is marked an estimate. It must cover the roughing pass's form error, deflection, runout, roughness and work-hardened layer while staying within the finish tool's stable chip/DOC window. Too little can rub; too much can overload the finish tool. BSSA specifically warns about preserving sufficient finish depth in work-hardening stainless ([BSSA guidance](https://bssa.org.uk/bssa_articles/speeds-and-feeds-for-turning-stainless-steels/)).
 
-The generic turning finish reserve remains 0.015 in per side where the pass planner applies it. This is an application estimate, not a universal chipbreaker minimum or a recommendation for every small part.
+The generic turning finish reserve is the lesser of 0.015 in and half the available stock: radial per side for OD/ID, axial for facing. This is an application estimate, not a universal chipbreaker minimum or a recommendation for every small part. The finish calculation retains cautions when the reserved cut is too light for the selected nose radius.
 
 ## Inside corners after a larger rougher
+
+### Inside-corner feed options
+
+- **Automatic radius correction:** the programmed centerline feed is straight-wall feed multiplied by (final inside radius minus cutter radius) divided by final inside radius. This corrects the tool-centerline/cutting-edge arc-length mismatch; it is not a dynamic engagement or force simulation ([Kennametal interpolation guidance](https://www1.mscdirect.com/images/solutions/kennametal/millingTechInfoInterpolation.pdf)).
+- **Radius correction plus feed cap:** the user can enter a cap as a percentage of straight-wall feed. The issued corner feed is the lesser of that cap and the geometry-corrected feed, never a higher feed. The percentage is user policy, not a tool-maker-validated safe factor.
+- **Rest-clear / semi-finish first:** withholds a final-pass corner feed until the stock is cleared, verified in CAM and the final feed strategy selected.
+- **No bypass:** excess corner stock, insufficient radius clearance, unknown actual previous stock, or an invalid selected cap prevents a single-pass corner-feed recommendation. Even a 1% cap does not override excessive stock.
+- **No unnecessary inputs:** without a positive inside radius, neither the corner model nor its cap validation is activated. Straight/outside contours do not require an inside radius.
+- **Controller and chip formation:** verify feed transitions, acceleration/jerk limits, smoothing and actual engagement in CAM. Very low feed can cause rubbing or work hardening; slower is not automatically safer. There is no validated universal anti-breakage percentage.
+
+The chosen corner-feed policy also applies to a linked wall finish when corner geometry is supplied. If the rougher's radius leaves excess material for the finish pass, the finish recommendation remains blocked pending rest clearing rather than simply applying a slower feed.
 
 Sandvik explicitly notes that engagement rises in internal corners, destabilizing the process and potentially damaging the tool. A straight-wall feed is not automatically appropriate in that heavier engagement ([Sandvik inside-corner guidance](https://www.sandvik.coromant.com/en-us/knowledge/milling/milling-inside-corners)).
 
@@ -199,7 +231,7 @@ The app is more transparent and better constrained after this audit. It remains 
 
 ## Audit receipt
 
-Run timestamp: 2026-10-22T18:22:17.151Z. Numerical/invariant audit only; no physical cutting certification.
+Run timestamp: 2026-10-22T19:31:03.670Z. Numerical/invariant audit only; no physical cutting certification.
 
 | Item | Actual result |
 |---|---|
@@ -209,9 +241,10 @@ Run timestamp: 2026-10-22T18:22:17.151Z. Numerical/invariant audit only; no phys
 | Extra dimensional / bad-input cases | 202 |
 | Total milling/hole calculation cases | 400238 |
 | Turning cases attempted | 42336 |
+| Additional linked finishing calculations checked | 295048 |
 | Explicit unsupported turning cases | 5184 |
 | Blocked milling/hole cases (included in counts, NOT certified cuts) | 142461 |
-| Numerical assertions | 6256554 |
+| Numerical assertions | 9790938 |
 | Failures | 0 |
 | Legacy fixture files passed | 18 / 18 |
 

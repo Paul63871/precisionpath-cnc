@@ -8,6 +8,7 @@ import {
   HELIX_DIA_DEFAULT_MULT, HELIX_DIA_MIN_MULT, HELIX_DIA_PRACTICAL_MULT, HELIX_DIA_SLUG_MULT,
 } from "./cncData";
 import { processPolicy, stockPlan, contourCorner, calculationReasoning } from "./processModel";
+import { millingFinishCompanion } from "./finishCompanion";
 
 // input shape:
 // { diameter (in), flutes (feed count), loc (in), toolMaterialId, coatingId, toolTypeId,
@@ -25,6 +26,12 @@ import { processPolicy, stockPlan, contourCorner, calculationReasoning } from ".
 //   clampForce (lbf) — optional: the vise/fixture's actual rated clamping force,
 //   used to give a direct pass/fail instead of just reporting the requirement }
 export function calculate(input) {
+  const result = calculateSingle(input);
+  if (result) result.companionFinish = millingFinishCompanion(input, result, calculateSingle);
+  return result;
+}
+
+function calculateSingle(input) {
   // Optional fields may be cleared or partially typed. Ignore invalid optional
   // numerics rather than letting Infinity/negative lengths poison the result.
   input = { ...input };
@@ -1236,6 +1243,7 @@ export function calculate(input) {
   const corner = contourCorner(input, { woc, ipm });
   if (corner?.exceedsStepover) blockingReasons.push(corner.reason);
   if (corner && !corner.fits) blockingReasons.push("Current cutter cannot interpolate the requested inside radius. Use a smaller cutter with clearance.");
+  if (corner?.feedBlockReason) blockingReasons.push(corner.feedBlockReason);
   if (corner && !corner.previousStockKnown) inputWarnings.push("Prior roughing wall stock was not entered. Corner estimate assumes zero wall stock; enter the actual CAM value.");
   if (formKind && op.docMode === "slot") blockingReasons.push("Form/radius cutters must not slot or plunge into solid; use a matching side/form operation.");
   if (entry && entry.method !== "predrilled" && ["face_mill", "round_insert"].includes(tt.id)) blockingReasons.push("Indexable solid entry needs an exact cutter ramp/plunge rating, which is not provided by this generic model. Use a verified pilot/side entry.");

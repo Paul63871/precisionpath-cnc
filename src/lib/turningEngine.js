@@ -1,3 +1,5 @@
+import { turningFinishCompanion } from "./finishCompanion";
+
 // Turning (lathe) calculation engine.
 //
 // Every formula is the standard machining relation or a manufacturer rule;
@@ -50,6 +52,12 @@ export function threadInfeeds(depth, N) {
 }
 
 export function calculateTurning(input) {
+  const result = calculateTurningSingle(input);
+  if (result && !result.error) result.companionFinish = turningFinishCompanion(input, result, calculateTurningSingle);
+  return result;
+}
+
+function calculateTurningSingle(input) {
   const {
     materialId, material, operationId = "od_rough", gradeId = "coated",
     aggressiveness = 0.6, priority, workDiameter, finishDiameter, cutLength,
@@ -226,6 +234,11 @@ export function calculateTurning(input) {
   // --- Depth of cut ----------------------------------------------------------
   const D1 = num(finishDiameter, op.kind === "id" ? D0 + 0.1 : D0 - 0.2);
   const radialStock = Math.max(0, op.kind === "id" ? (D1 - D0) / 2 : op.kind === "face" ? num(input.faceStock, 0.05) : (D0 - D1) / 2);
+  // Application estimate, not an insert-maker minimum. Preserve a finish
+  // reserve even for thin stock rather than silently roughing to final size.
+  const finishReserve = !op.finishing && ["od", "id", "face"].includes(op.kind)
+    ? Math.min(0.015, radialStock / 2) : 0;
+  if (["od", "id", "face"].includes(op.kind) && radialStock <= 0) blockingReasons.push("No positive incoming stock for this operation. Check start/finish dimensions.");
   let doc = 0;
   let docNote = null;
   if (op.kind === "groove" || op.kind === "parting") {
@@ -248,16 +261,16 @@ export function calculateTurning(input) {
       // Finish ap: leave exactly the finishing allowance. Sandvik/MetronQ finish ap 0.3-1 mm
       // (0.012-0.040"); Ready Plastics 0.010-0.020"; and ap >= 2/3 nose radius to engage
       // the radius (Sandvik) while < 1/3 RE gives the best finish only for sub-0.5 mm cuts.
-      const allow = Math.min(radialStock || 0.015, 0.040);
+      const allow = Math.min(radialStock || 0.015, 0.040, apMax);
       doc = radialStock > 0 ? allow : 0.015;
       docNote = "Finish pass removes the stock left by the rough pass.";
       if (radialStock > 0.040 + 1e-9) warnings.push(`${radialStock.toFixed(3)}" per side is more than a finish pass should remove (≤ 0.040", Sandvik/MetronQ finishing ap 0.3–1 mm) — rough most of it first and leave ~0.010–0.020" per side.`);
       if (doc < (2 / 3) * rn) warnings.push(`Finish depth ${doc.toFixed(3)}" is less than 2/3 of the nose radius (${rn.toFixed(3)}") — the radius is not fully engaged, the cut rubs and the finish/feeds in the table no longer hold. Use a smaller nose radius or a deeper cut (Sandvik Coromant, Seco geometry guide).`);
     } else {
-      const finishAllowance = radialStock > 0.03 ? Math.min(0.015, radialStock) : 0;
-      const roughStock = Math.max(radialStock - finishAllowance, 0);
+      const roughStock = Math.max(radialStock - finishReserve, 0);
       doc = Math.min(apMax * lerp(0.5, 1.0, aggQ), apHp, roughStock > 0 ? roughStock : Infinity);
       doc = Math.max(doc, Math.min(0.01, apMax));
+      doc = Math.min(doc, roughStock);
       if (doc < (2 / 3) * rn - 1e-9 && !shape.round) warnings.push(`Depth of cut ${doc.toFixed(3)}" is below 2/3 of the nose radius (${rn.toFixed(3)}") — use a smaller nose radius or deeper cut (Sandvik).`);
       docNote = `Max ap from insert: ${apMax.toFixed(3)}" (${shape.round ? "0.25 x IC for round inserts" : "2/3 x edge length x sin κr"}); HP limit ${apHp.toFixed(3)}".`;
       if (apHp < doc * 0.99) docNote += " HP-limited.";
@@ -341,9 +354,9 @@ export function calculateTurning(input) {
   let passes = null;
   if (op.kind === "od" || op.kind === "id") {
     const total = radialStock;
-    passes = { radialStock: r(total, 4), roughPasses: !op.finishing && doc > 0 ? Math.max(1, Math.ceil(Math.max(total - (total > 0.03 ? 0.015 : 0), 0) / doc)) : 0, finishPasses: op.finishing && doc > 0 ? Math.max(1, Math.ceil(total / doc)) : 0, finishAllowance: total > 0.03 && !op.finishing ? 0.015 : 0 };
+    passes = { radialStock: r(total, 4), roughPasses: !op.finishing && doc > 0 ? Math.max(1, Math.ceil(Math.max(total - finishReserve, 0) / doc - 1e-9)) : 0, finishPasses: op.finishing && doc > 0 ? Math.max(1, Math.ceil(total / doc - 1e-9)) : 0, finishAllowance: finishReserve };
   }
-  if (op.kind === "face") passes = { radialStock: r(radialStock, 4), roughPasses: op.finishing ? 0 : Math.max(1, Math.ceil(radialStock / Math.max(doc, 1e-4))), finishAllowance: 0 };
+  if (op.kind === "face") passes = { radialStock: r(radialStock, 4), roughPasses: op.finishing || doc <= 0 ? 0 : Math.max(1, Math.ceil((radialStock - finishReserve) / doc - 1e-9)), finishPasses: op.finishing && doc > 0 ? Math.max(1, Math.ceil(radialStock / doc - 1e-9)) : 0, finishAllowance: finishReserve };
 
   // Cycle time estimate (cutting only)
   let cutTime = null;
@@ -463,7 +476,7 @@ export function calculateTurning(input) {
     axial: op.kind === "face" ? allowance : 0, normal: 0, estimate: !op.finishing,
     reason: op.finishing ? "Final surface: zero stock to leave. Incoming material must be a controlled finishing allowance."
       : op.kind === "face" ? "Lathe facing: zero radial stock. Only axial stock can be reserved for another face finish."
-        : op.kind === "od" || op.kind === "id" ? "OD/ID allowance is radial per side; diameter allowance is twice this. The generic 0.015 in reserve is an engineering estimate, not a universal insert specification."
+        : op.kind === "od" || op.kind === "id" ? "OD/ID allowance is radial per side; diameter allowance is twice this. Reserve is min(0.015 in, half available stock), an engineering estimate, not a universal insert specification."
           : "Thread/groove/part-off uses feature dimensions and its own pass schedule, not generic wall/floor stock.",
   };
   const reasoning = [

@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "test:audit": "node tests/audit.mjs && node tests/run-legacy.mjs",
+    "test:audit": "node tests/audit.mjs && node tests/run-legacy.mjs && node tests/finish-companion.mjs",
     "build:preview": "VITE_STATIC_PREVIEW=true vite build --base=./ && node tests/inline-preview.mjs",
     "dev": "vite",
     "build": "vite build",

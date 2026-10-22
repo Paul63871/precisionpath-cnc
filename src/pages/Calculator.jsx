@@ -138,6 +138,7 @@ export default function Calculator() {
       priority, featureDiameter: adaptive.featureDiameter, pilotDiameter: adaptive.pilotDiameter, targetRa: adaptive.targetRa, entryMethod: adaptive.entryMethod || undefined, helixDiameter: adaptive.helixDiameter,
       previousToolDiameter: adaptive.previousToolDiameter, previousStock: adaptive.previousStock,
       insideCornerRadius: adaptive.insideCornerRadius, cornerAngleDeg: adaptive.cornerAngleDeg,
+      cornerFeedMode: adaptive.cornerFeedMode, cornerFeedPercent: adaptive.cornerFeedPercent,
       finishToolDiameter: adaptive.finishToolDiameter,
     });
   }, [tool, selectedMaterial, operationId, aggressiveness, machine, override, adaptive, priority]);
@@ -270,12 +271,12 @@ export default function Calculator() {
                 {selectedOp && (/contour|waterline/.test(selectedOp.id) || selectedOp.id === "3d_pocket") && (
                   <fieldset className="col-span-2 rounded-lg border border-border bg-muted/30 p-3 space-y-3">
                     <legend className="text-xs font-semibold px-1">Previous roughing / inside corners</legend>
-                    <p className="text-[11px] text-muted-foreground leading-relaxed">If a larger tool roughed this feature, enter its diameter and actual wall stock. This estimates corner buildup separately from your straight-wall radial pass. For 3D contours this is only a planar cross-section; verify with the CAM stock model.</p>
+                    <p className="text-[11px] text-muted-foreground leading-relaxed">All corner inputs are optional. Leave the inside radius blank or zero for straight/outside contours or when no inside-corner check is needed. A positive radius plus a previous cutter enables the planar corner-stock check. For 3D contours, verify the full geometry with the CAM stock model.</p>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       {[
                         ["previousToolDiameter", "Previous roughing tool Ø", "Optional"],
                         ["previousStock", "Previous radial stock left", "Enter actual CAM stock"],
-                        ["insideCornerRadius", "Final inside corner radius", "Part geometry, not tool radius"],
+                        ["insideCornerRadius", "Final inside corner radius (optional)", "Blank / 0 = no corner check"],
                       ].map(([key, title, placeholder]) => (
                         <div key={key} className="space-y-1.5">
                           <Label htmlFor={key} className="text-xs text-muted-foreground">{title} ({UNITS[units].length})</Label>
@@ -286,7 +287,27 @@ export default function Calculator() {
                         <Label htmlFor="cornerAngleDeg" className="text-xs text-muted-foreground">Included wall angle (degrees)</Label>
                         <NumberField id="cornerAngleDeg" className="h-10" allowClear placeholder="90° default" value={adaptive.cornerAngleDeg} onValueChange={(n) => setAdaptive((a) => ({ ...a, cornerAngleDeg: n }))} />
                       </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-xs text-muted-foreground">Inside-corner feed strategy</Label>
+                        <ResponsiveSelect
+                          value={adaptive.cornerFeedMode || "auto"}
+                          onValueChange={(v) => setAdaptive((a) => ({ ...a, cornerFeedMode: v }))}
+                          placeholder="Inside-corner feed strategy"
+                          options={[
+                            { value: "auto", label: "Automatic radius correction" },
+                            { value: "cap", label: "Radius correction + feed cap" },
+                            { value: "rest", label: "Rest-clear / semi-finish first" },
+                          ]}
+                        />
+                      </div>
+                      {adaptive.cornerFeedMode === "cap" && (
+                        <div className="space-y-1.5">
+                          <Label htmlFor="cornerFeedPercent" className="text-xs text-muted-foreground">Corner feed cap (% of straight feed)</Label>
+                          <NumberField id="cornerFeedPercent" className="h-10" allowClear placeholder="Enter >0 to 100 percent" value={adaptive.cornerFeedPercent} onValueChange={(n) => setAdaptive((a) => ({ ...a, cornerFeedPercent: n }))} />
+                        </div>
+                      )}
                     </div>
+                    <p className="text-xs text-muted-foreground leading-relaxed">Only applies when a positive inside radius and previous cutter are entered. Automatic mode corrects for the shorter tool-centerline arc; a custom cap can only lower that feed. Neither mode makes excess corner stock safe. Unknown stock or excess engagement withholds a corner feed; rest-clear and verify in CAM. Excessively low feed can rub/work-harden. Use CAM feed optimization and smooth entry/exit transitions, within the machine's acceleration and contour-control limits.</p>
                   </fieldset>
                 )}
                 {selectedOp && !selectedOp.finishing && !["drill", "tap"].includes(selectedOp.docMode) && (
