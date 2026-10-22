@@ -80,6 +80,10 @@ Support: [https://app.base44.com/support](https://app.base44.com/support)
 The October 22, 2026 audit is in [docs/feeds-speeds-audit-2026-10-22.md](docs/feeds-speeds-audit-2026-10-22.md).
 Run `npm run test:audit` for numerical invariant sweeps and retained regression fixtures.
 Run `node tests/generate-report-appendix.mjs` after the tests to refresh the report's app-data snapshot.
+Use `npm run build:preview` for the attached opaque-origin static preview. It
+uses hash routing, relative/embedded assets and temporary in-page storage
+compatibility for the SDK. Normal `npm run build` keeps Base44 routing/auth
+behavior; static preview data/AI integrations are not a working Base44 backend.
 
 These tests establish numerical behavior, not physical validation of every tool.
 The shared intensity policy reserves at least 20% of entered HP at its top setting,

@@ -2,12 +2,15 @@ import { useEffect } from "react";
 import { Toaster } from "@/components/ui/toaster"
 import { QueryClientProvider } from '@tanstack/react-query'
 import { queryClientInstance } from '@/lib/query-client'
-import { BrowserRouter as Router, Route, Routes, useLocation } from 'react-router-dom';
+import { BrowserRouter, HashRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import ScrollToTop from './components/ScrollToTop';
+// Static attached previews live below an opaque path. Keep normal Base44
+// browser routing unchanged; only the explicit preview build uses hash routes.
+const Router = import.meta.env.VITE_STATIC_PREVIEW === "true" ? HashRouter : BrowserRouter;
 // Add page imports here
 import Calculator from './pages/Calculator';
 import SavedCalculations from './pages/SavedCalculations';
@@ -97,6 +100,7 @@ function App() {
     <AuthProvider>
       <QueryClientProvider client={queryClientInstance}>
         <Router>
+          {import.meta.env.VITE_STATIC_PREVIEW === "true" && <div className="bg-amber-100 text-amber-950 text-xs p-2 text-center">Calculation preview only. Saved data and AI lookups require the hosted Base44 app; preview preferences are temporary.</div>}
           <ScrollToTop />
           <AuthenticatedApp />
         </Router>

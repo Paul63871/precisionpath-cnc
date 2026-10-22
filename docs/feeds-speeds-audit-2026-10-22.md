@@ -167,6 +167,8 @@ The audit checks finite outputs, displayed explanations, stock-plan availability
 
 Local browser checks covered all nine routes at 375 px width, with no document horizontal overflow, plus the calculator/turning controls at desktop width. The facing example, four objectives, 100% slider, 3D corner warning, explanation expansion and inch/mm round trip were exercised. The save dialog was opened and dismissed without creating a record. Base44 configuration/entity/assistant endpoints return 404 in this local environment because its app ID is not configured; authenticated live lookup/save behavior is not counted as passed.
 
+The attached static preview was also opened in a fresh hosted browser context. Its facing allowance, tool-life/100% controls, navigation to Turning, mobile width and excessive-corner-stock warning were checked without calculation-page errors. Preview-only packaging uses hash routes, embedded assets and ephemeral storage compatibility because the SDK's direct browser-storage probe fails in an opaque sandbox. This does not turn the preview into an authenticated Base44 backend or change the production build's normal routing.
+
 Regression checks were retained for ball nose, form cutters, plastics, phenolics, facing, circular paths, tapping, turning, workholding and previous benchmark fixtures. The former aluminum-jaw test was corrected because it asserted the unsupported 40% material-only force rule. Entry tests now allow a further power-budget reduction below the nominal 50% entry factor.
 
 Tests of numerical relationships are not measurements of tool strength, tool life, chatter, chip evacuation, actual corner engagement or finish. The inherited benchmark fixtures are not an independently reproduced manufacturer certification. A report of millions of assertions is not millions of shop cuts.
@@ -197,7 +199,7 @@ The app is more transparent and better constrained after this audit. It remains 
 
 ## Audit receipt
 
-Run timestamp: 2026-10-22T18:08:46.407Z. Numerical/invariant audit only; no physical cutting certification.
+Run timestamp: 2026-10-22T18:22:17.151Z. Numerical/invariant audit only; no physical cutting certification.
 
 | Item | Actual result |
 |---|---|

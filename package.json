@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "test:audit": "node tests/audit.mjs && node tests/run-legacy.mjs",
+    "build:preview": "VITE_STATIC_PREVIEW=true vite build --base=./ && node tests/inline-preview.mjs",
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint . --quiet",
