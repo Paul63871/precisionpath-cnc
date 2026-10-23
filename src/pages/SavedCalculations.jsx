@@ -1,4 +1,5 @@
 import React from "react";
+import { isHsmBore } from "@/lib/hsmBore";
 import { useNavigate } from "react-router-dom";
 import { Trash2, Upload, Bookmark } from "lucide-react";
 import { useEntityList } from "@/lib/useEntityList";
@@ -43,14 +44,14 @@ export default function SavedCalculations() {
                     {new Date(c.created_date).toLocaleDateString()}
                   </span>
                 </div>
-                <div className="mt-3 grid grid-cols-4 gap-2 text-center">
+                {isHsmBore(c.operation_id) ? <p className="mt-3 text-xs text-muted-foreground">Bore setup must be loaded, recalculated and reviewed before use. Saved or legacy generic feed/DOC values are not an approved HSMWorks entry sheet.</p> : <div className="mt-3 grid grid-cols-4 gap-2 text-center">
                   {[["RPM", c.result_rpm], ["IPM", c.result_ipm], ["DOC", c.result_doc], ["HP", c.result_hp]].map(([l, v]) => (
                     <div key={l} className="rounded-md bg-muted px-1 py-1.5">
                       <div className="text-[10px] text-muted-foreground">{l}</div>
                       <div className="font-mono text-sm">{v ?? "—"}</div>
                     </div>
                   ))}
-                </div>
+                </div>}
                 <div className="mt-3 flex gap-2">
                   <Button size="sm" className="h-8 flex-1" onClick={() => navigate("/", { state: { savedCalc: c } })}>
                     <Upload className="w-3.5 h-3.5 mr-1.5" />Load

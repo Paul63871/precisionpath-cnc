@@ -1,6 +1,6 @@
 # PrecisionPath CNC: feeds, speeds and process-planning audit
 
-Audit date: October 22, 2026. Scope: the current application engine, material/tool/operation tables, slider/objectives, stock allowances, contour corner stock, explanations and responsive UI.
+Original audit: October 22, 2026; HSMWorks Bore field-contract update: October 23, 2026. Scope: the application engine, material/tool/operation tables, slider/objectives, stock allowances, contour corner stock, HSMWorks Bore field mapping, explanations and responsive UI.
 
 ## Executive finding
 
@@ -31,6 +31,39 @@ The most important practical conclusion is this: **100% on the intensity slider 
 These are application changes established by code review and tests. They do not establish measured tool life or measured surface finish.
 
 ## Where the numbers come from
+
+### HSMWorks Bore field contract, added October 23
+
+This update maps the user's supplied HSMWorks Bore Tool, Geometry, Heights, expanded Passes and Linking screenshots to a separate field-by-field entry sheet. It does not control HSMWorks, inspect a SolidWorks model, run a post, or certify a machine setup. Parameter meanings were cross-checked against Autodesk's shared HSM Bore reference, not assumed to be identical to every current Fusion dialog ([Autodesk HSM Bore reference](https://help.autodesk.com/cloudhelp/2019/ENU/Inventor-HSM/files/GUID-A3D01231-69F4-40E4-994C-9103B0CF9C0B.htm)).
+
+| HSMWorks location | Meaning and calculator rule |
+| --- | --- |
+| Tool: Spindle speed | Primary spindle setting. Ramp spindle speed uses the same RPM; Surface speed is derived, not an independent value to paste after RPM. |
+| Tool: Cutting feedrate | Already-corrected centerline G94 feed, governed by the smallest proposed cutting orbit, machine feed and modeled worst-pass power. |
+| Tool: Feed per tooth | Derived from Cutting feedrate divided by RPM and flutes. Do not replace it with the uncorrected physical cutting-edge chip target. |
+| Tool: Ramp / Lead-in / Lead-out feedrates | Same conservative centerline feed as Cutting feedrate; this avoids dependence on an unverified distinction between helical movement classifications. This is an application policy, not an Autodesk default. |
+| Tool: Plunge feedrate | Only for verified open-air/existing-hole travel; not approval to plunge into solid material. |
+| Tool: Feed per revolution | Plunge feedrate divided by spindle RPM. It is NOT the bore pitch or the helix's axial feed per spindle revolution. |
+| Passes: first length field above Multiple passes | Pitch: Z descent per complete orbit around the bore, not per spindle revolution. |
+| Passes: Multiple passes | Enabled when radial cuts are needed; numbered count and radial stepover are proposed. Verify icon-field tooltips and actual generated count/minimum orbit in simulation. |
+| Passes: Finishing passes | Off in this workflow: final-size finishing is a separate linked Bore operation. An internal finishing pass does not cancel a nonzero Stock to Leave setting. |
+| Passes: Stock to Leave | Radial, per side. Roughing leaves the reserve; linked finishing starts from the rough exit diameter and sets this checkbox Off/zero. |
+| Passes: Compensation type / Direction / Repeat passes | In Computer / Climb / Off for the supported worksheet. Other compensation or spring-pass strategies require separate validation. |
+| Heights and Linking | No invented clearance height, retract height, lead radius/distance, safe distance, entry position or rapid/high-feed mapping. The operator must verify geometry, fixture/holder reach and collision simulation. |
+
+Autodesk defines the Tool-tab feed relationships and Pitch separately; the screenshot example's 5.2 IPM plunge divided by 891.268 RPM is approximately 0.00583439 in/spindle rev, which is distinct from the displayed 0.007 in/orbit pitch. That arithmetic does not validate the screenshot's cutting settings without material, actual bore geometry and exact-tool limits ([Autodesk HSM feed and pitch definitions](https://help.autodesk.com/cloudhelp/2019/ENU/Inventor-HSM/files/GUID-A3D01231-69F4-40E4-994C-9103B0CF9C0B.htm)).
+
+The maximum proposed pitch is the lesser of the engine's axial cutting bound, feature depth, and minimum-orbit circumference multiplied by the tangent of the lesser of the exact-tool ramp limit and the conservative material ramp bound. For a centerline orbit diameter \(d_c\), the geometric relation is \(p = \pi d_c \tan(\alpha)\); pitch is rounded down, not up. The centerline feed factor is \(d_c / D_\text{cut}\), using the cutting diameter after stock allowance and the smallest orbit rather than the final nominal bore diameter ([Kennametal interpolation reference](https://www1.mscdirect.com/images/solutions/kennametal/millingTechInfoInterpolation.pdf)).
+
+For solid starts, the modeled initial hole is no larger than 1.5 times cutter diameter, with subsequent radius increments at most 10% of cutter diameter; a 1.2D minimum cutting-diameter policy excludes this generic sheet's tightest clearances. Existing-hole cuts use slightly less than the engine's radial load limit to retain entry-rounding headroom. These are conservative application estimates, not universal cutter-manufacturer permissions. The proposed pass layout must match HSMWorks simulation; the calculator does not establish the CAM's exact first orbit from an actual model.
+
+Power is checked using the worst annular/full initial slice area times actual helical Z feed and the material unit-power factor. Grip-force estimates are updated conservatively, and an entered insufficient clamp force blocks release. This does not model instantaneous engagement force, exact jaw strength, acceleration, jerk, chips, tool wear or minimum stable chip thickness.
+
+Copyable entries and Bore saving are withheld when stock is unknown, geometry/reach is invalid, the exact-tool ramp limit is missing, a pitch exceeds its bound, clamp capacity is entered and insufficient, or tool/geometry/post/pass confirmations are incomplete. The confirmations are operator attestations, not automatic measurements; physical-input changes clear them, unit-only display changes do not, and loading saved Bore data requires re-review. Saved/legacy generic DOC/feed summaries are not shown as approved Bore values.
+
+“In Computer” establishes cutter-path compensation, not verified feed compensation. The sheet requires a checked G94 centerline-feed post/control basis with no second circular-feed adjustment; post rounding and the actual NC motion must still be inspected. This is especially important because HSM installations and controls can differ ([Autodesk compensation definition](https://help.autodesk.com/cloudhelp/2019/ENU/Inventor-HSM/files/GUID-A3D01231-69F4-40E4-994C-9103B0CF9C0B.htm)).
+
+The Bore-specific contract test currently covers 2,355 cases and 115,423 assertions, including missing inputs, invalid/too-large/tiny pitch, tool type, LOC, insufficient clamp force, stale confirmations, rough-to-finish stock, standalone/legacy Bore IDs, material/priority/intensity combinations, linked feed arithmetic and smallest-orbit constraints. These are numerical and screenshot-mapping checks only. No HSMWorks execution, posted-program round trip, collision validation or physical cutting trial has been performed.
 
 ### Linked roughing and finishing update
 
@@ -231,7 +264,7 @@ The app is more transparent and better constrained after this audit. It remains 
 
 ## Audit receipt
 
-Run timestamp: 2026-10-22T19:31:03.670Z. Numerical/invariant audit only; no physical cutting certification.
+Run timestamp: 2026-10-23T19:52:26.641Z. Numerical/invariant audit only; no physical cutting certification.
 
 | Item | Actual result |
 |---|---|

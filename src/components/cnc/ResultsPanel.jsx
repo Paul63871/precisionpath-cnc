@@ -2,6 +2,7 @@ import React from "react";
 import { AlertTriangle, Gauge, Activity, Layers, Ruler, Zap, TrendingUp } from "lucide-react";
 import { UNITS, lenFromImp, feedFromImp, surfaceFromImp, powerFromImp, mrrFromImp } from "@/lib/units";
 import ProcessExplanation from "./ProcessExplanation";
+import HsmBoreResults from "./HsmBoreResults";
 
 function Metric({ icon: Icon, label, value, unit, accent }) {
   return (
@@ -20,6 +21,7 @@ function Metric({ icon: Icon, label, value, unit, accent }) {
 
 export default function ResultsPanel({ result, units = "imperial" }) {
   if (!result) return null;
+  if (result.hsmBore) return <HsmBoreResults key={`${units}/${result.hsmBore.revision}`} result={result} units={units} />;
   const u = UNITS[units];
   const fmt = (v, d = 2) => Number(v).toFixed(d);
   const hpColor = result.hpUtilization > 100 ? "text-destructive" : result.hpUtilization > 85 ? "text-amber-500" : "text-emerald-600";

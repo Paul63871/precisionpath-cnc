@@ -9,6 +9,7 @@ import {
 } from "./cncData";
 import { processPolicy, stockPlan, contourCorner, calculationReasoning } from "./processModel";
 import { millingFinishCompanion } from "./finishCompanion";
+import { hsmBorePlan, isHsmBore } from "./hsmBore";
 
 // input shape:
 // { diameter (in), flutes (feed count), loc (in), toolMaterialId, coatingId, toolTypeId,
@@ -27,7 +28,28 @@ import { millingFinishCompanion } from "./finishCompanion";
 //   used to give a direct pass/fail instead of just reporting the requirement }
 export function calculate(input) {
   const result = calculateSingle(input);
-  if (result) result.companionFinish = millingFinishCompanion(input, result, calculateSingle);
+  if (result) {
+    result.hsmBore = hsmBorePlan(input, result);
+    if (result.hsmBore?.workholding) result.workholding = result.hsmBore.workholding;
+    if (result.hsmBore && !result.hsmBore.ready) {
+      result.runnable = false;
+      result.blockingReasons = result.hsmBore.reasons;
+    }
+    result.companionFinish = millingFinishCompanion(input, result, calculateSingle);
+    if (result.hsmBore) for (const step of result.companionFinish?.steps || []) {
+      if (!isHsmBore(step.operationId)) continue;
+      const finishInput = {
+        ...input, ...step.calculationInput, camWorkflow: "hsmworks_bore",
+        pilotDiameter: result.hsmBore.cutDiameter,
+        hsmBore: { ...input.hsmBore, stockState: "pilot", pitchOverride: undefined },
+      };
+      step.result.hsmBore = hsmBorePlan(finishInput, step.result);
+      if (!step.result.hsmBore.ready) {
+        step.result.runnable = false;
+        step.result.blockingReasons = step.result.hsmBore.reasons;
+      }
+    }
+  }
   return result;
 }
 

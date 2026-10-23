@@ -24,7 +24,8 @@ export function millingFinishCompanion(input, rough, calculateSingle) {
     override: undefined, entryMethod: "predrilled", helixDiameter: undefined,
   };
   const add = (label, operationId, incoming, pins, extra = []) => {
-    const result = calculateSingle({ ...common, operationId, ...pins });
+    const calculationInput = { ...common, operationId, ...pins };
+    const result = calculateSingle(calculationInput);
     if (!result) return;
     const reasons = [...(result.blockingReasons || [])];
     if (rough.runnable === false) reasons.push("Correct the blocked roughing setup before using this linked finish plan.");
@@ -36,7 +37,7 @@ export function millingFinishCompanion(input, rough, calculateSingle) {
     // appear approved simply because the lighter companion cut meets its caps.
     result.blockingReasons = [...new Set(reasons)];
     result.runnable = reasons.length === 0;
-    steps.push({ label, operationId, incoming, diameter, result, notes: extra });
+    steps.push({ label, operationId, incoming, diameter, result, notes: extra, calculationInput });
   };
   const id = input.operationId || "";
   if (stock.radial > 0) {

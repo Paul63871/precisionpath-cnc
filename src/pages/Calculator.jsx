@@ -17,6 +17,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import ResponsiveSelect from "@/components/cnc/ResponsiveSelect";
+import HsmBoreInputs from "@/components/cnc/HsmBoreInputs";
+import { isHsmBore } from "@/lib/hsmBore";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 
 const DEFAULT_TOOL = { toolTypeId: "end_mill", toolMaterialId: "carbide", coatingId: "altin", diameter: 0.25, flutes: 3, loc: 0.75, inserts: 4, cornerRadius: 0.03, insertIc: 0.5, radiusEngagement: "one_side", includedAngle: 90, tipDiameter: 0, leadAngle: 45, pointAngle: 118, thickness: 0.0625, neckDiameter: 0, threadId: "unc_1_4_20", tapStyle: "spiral_point", holeType: "through" };
@@ -92,7 +94,10 @@ export default function Calculator() {
       setOperationId(c.operation_id);
       setMachine({ hp: c.machine_hp, maxRpm: c.machine_max_rpm, minRpm: c.machine_min_rpm, maxIpm: c.machine_max_ipm });
       setAggressiveness(c.aggressiveness);
-      if (c.tool_data?.processData?.adaptive) setAdaptive(c.tool_data.processData.adaptive);
+      if (c.tool_data?.processData?.adaptive) setAdaptive({
+        ...c.tool_data.processData.adaptive,
+        hsmBore: { ...c.tool_data.processData.adaptive.hsmBore, verifiedFor: undefined },
+      });
       if (c.tool_data?.processData?.priority) setPriority(c.tool_data.processData.priority);
     } else if (st.machineProfile) {
       const p = st.machineProfile;
@@ -120,6 +125,22 @@ export default function Calculator() {
 
   const selectedMaterial = combinedMaterials.find((m) => m.id === materialId) || PART_MATERIALS[0];
   const selectedOp = OPERATIONS.find((o) => o.id === operationId);
+  const boreMode = isHsmBore(operationId);
+  const hsmVerifyKey = JSON.stringify({
+    tool, material: selectedMaterial, operationId, machine, aggressiveness, priority, override,
+    featureDiameter: adaptive.featureDiameter, featureDepth: adaptive.featureDepth,
+    pilotDiameter: adaptive.pilotDiameter, finishToolDiameter: adaptive.finishToolDiameter, targetRa: adaptive.targetRa,
+    stockState: adaptive.hsmBore?.stockState, maxRampAngle: adaptive.hsmBore?.maxRampAngle,
+    pitchOverride: adaptive.hsmBore?.pitchOverride, clampForce: adaptive.clampForce, jawTypeId: adaptive.jawTypeId,
+  });
+  useEffect(() => {
+    if (adaptive.hsmBore?.verifiedFor && (!boreMode || adaptive.hsmBore.verifiedFor !== hsmVerifyKey)) {
+      setAdaptive(a => ({ ...a, hsmBore: {
+        ...a.hsmBore, verifiedFor: undefined,
+        toolApproved: false, geometryVerified: false, postVerified: false, passesVerified: false,
+      } }));
+    }
+  }, [hsmVerifyKey, boreMode, adaptive.hsmBore?.verifiedFor]);
 
   const result = useMemo(() => {
     if (!tool.diameter || tool.diameter <= 0) return null;
@@ -131,19 +152,25 @@ export default function Calculator() {
       toolTypeId: tool.toolTypeId, material: selectedMaterial, operationId, aggressiveness, machine, override,
       leadAngle: tool.leadAngle, cornerRadius: tool.cornerRadius, insertIc: tool.insertIc, radiusEngagement: tool.radiusEngagement, includedAngle: tool.includedAngle,
       tipDiameter: tool.tipDiameter, thickness: tool.thickness, neckDiameter: tool.neckDiameter, pointAngle: tool.pointAngle,
-      radialLoad: adaptive.radialLoad, axialDoc: adaptive.axialDoc, featureDepth: adaptive.featureDepth,
+      radialLoad: boreMode ? undefined : adaptive.radialLoad, axialDoc: boreMode ? undefined : adaptive.axialDoc, featureDepth: adaptive.featureDepth,
       threadId: tool.threadId, tapStyle: tool.tapStyle, pitch: tool.pitch, holeType: tool.holeType,
       gripDepth: adaptive.gripDepth,
       jawTypeId: adaptive.jawTypeId, clampForce: adaptive.clampForce,
-      priority, featureDiameter: adaptive.featureDiameter, pilotDiameter: adaptive.pilotDiameter, targetRa: adaptive.targetRa, entryMethod: adaptive.entryMethod || undefined, helixDiameter: adaptive.helixDiameter,
+      priority, featureDiameter: adaptive.featureDiameter,
+      pilotDiameter: boreMode && adaptive.hsmBore?.stockState !== "pilot" ? 0 : adaptive.pilotDiameter,
+      targetRa: adaptive.targetRa,
+      entryMethod: boreMode ? adaptive.hsmBore?.stockState === "solid" ? "helix" : "predrilled" : adaptive.entryMethod || undefined,
+      helixDiameter: boreMode ? undefined : adaptive.helixDiameter,
+      camWorkflow: boreMode ? "hsmworks_bore" : undefined, hsmBore: adaptive.hsmBore, hsmVerifyKey,
       previousToolDiameter: adaptive.previousToolDiameter, previousStock: adaptive.previousStock,
       insideCornerRadius: adaptive.insideCornerRadius, cornerAngleDeg: adaptive.cornerAngleDeg,
       cornerFeedMode: adaptive.cornerFeedMode, cornerFeedPercent: adaptive.cornerFeedPercent,
       finishToolDiameter: adaptive.finishToolDiameter,
     });
-  }, [tool, selectedMaterial, operationId, aggressiveness, machine, override, adaptive, priority]);
+  }, [tool, selectedMaterial, operationId, aggressiveness, machine, override, adaptive, priority, boreMode, hsmVerifyKey]);
 
   const saveCalc = async () => {
+    if (result?.hsmBore && !result.hsmBore.ready) return;
     setSaving(true);
     try {
       await base44.entities.SavedCalculation.create({
@@ -154,8 +181,9 @@ export default function Calculator() {
         material_id: materialId, operation_id: operationId,
         machine_hp: machine.hp, machine_max_rpm: machine.maxRpm, machine_min_rpm: machine.minRpm, machine_max_ipm: machine.maxIpm,
         aggressiveness,
-        result_rpm: result?.rpm, result_ipm: result?.ipm, result_doc: result?.doc,
-        result_woc: result?.woc, result_chip_load: result?.chipLoad, result_mrr: result?.mrr, result_hp: result?.hpRequired,
+        result_rpm: result?.rpm, result_ipm: result?.hsmBore?.fields?.cuttingFeedrate ?? result?.ipm, result_doc: result?.hsmBore?.fields?.pitch ?? result?.doc,
+        result_woc: result?.woc, result_chip_load: result?.hsmBore?.fields?.feedPerTooth ?? result?.chipLoad,
+        result_mrr: result?.hsmBore?.mrr ?? result?.mrr, result_hp: result?.hsmBore?.hpRequired ?? result?.hpRequired,
       });
       setSaveOpen(false);
       setSaveName("");
@@ -189,8 +217,10 @@ export default function Calculator() {
           </Section>
           {operationId !== "drilling" && operationId !== "tapping" && (
             <Section icon={Sliders} title="Path Engagement">
-              <p className="text-[11px] text-muted-foreground mb-3">Enter the feature depth, Optimal Load (max radial stepover), and axial step-down from your CAM's Passes tab. Leave blank to auto-calculate. These load settings apply to both roughing and finishing adaptive paths.</p>
+              {!boreMode && <p className="text-[11px] text-muted-foreground mb-3">Enter the feature depth, Optimal Load (max radial stepover), and axial step-down from your CAM's Passes tab. Leave blank to auto-calculate. These load settings apply to both roughing and finishing adaptive paths.</p>}
               <div className="grid grid-cols-2 gap-3">
+                {boreMode && <div className="col-span-2"><HsmBoreInputs adaptive={adaptive} setAdaptive={setAdaptive} units={units} verifyKey={hsmVerifyKey} /></div>}
+                {!boreMode && <>
                 <div className="space-y-1.5">
                   <Label className="text-xs text-muted-foreground">Feature Depth ({UNITS[units].length})</Label>
                   <NumberField className="h-9" allowClear placeholder="Auto" value={adaptive.featureDepth ? lenFromImp(adaptive.featureDepth, units) : undefined} onValueChange={(n) => setAdaptive((a) => ({ ...a, featureDepth: n ? lenToImp(n, units) : 0 }))} />
@@ -310,6 +340,7 @@ export default function Calculator() {
                     <p className="text-xs text-muted-foreground leading-relaxed">Only applies when a positive inside radius and previous cutter are entered. Automatic mode corrects for the shorter tool-centerline arc; a custom cap can only lower that feed. Neither mode makes excess corner stock safe. Unknown stock or excess engagement withholds a corner feed; rest-clear and verify in CAM. Excessively low feed can rub/work-harden. Use CAM feed optimization and smooth entry/exit transitions, within the machine's acceleration and contour-control limits.</p>
                   </fieldset>
                 )}
+                </>}
                 {selectedOp && !selectedOp.finishing && !["drill", "tap"].includes(selectedOp.docMode) && (
                   <div className="col-span-2 space-y-1.5">
                     <Label htmlFor="finishToolDiameter" className="text-xs text-muted-foreground">Planned finishing cutter Ø ({UNITS[units].length})</Label>
@@ -318,9 +349,9 @@ export default function Calculator() {
                 )}
                 {selectedOp?.finishing && (
                   <div className="space-y-1.5 col-span-2">
-                    <Label className="text-xs text-muted-foreground">Target surface finish Ra (µin)</Label>
+                    <Label className="text-xs text-muted-foreground">{boreMode ? "Calculator finish target Ra (µin; not an HSMWorks Bore field)" : "Target surface finish Ra (µin)"}</Label>
                     <NumberField className="h-9" allowClear placeholder="32 µin (0.8 µm) default" value={adaptive.targetRa || undefined} onValueChange={(n) => setAdaptive((a) => ({ ...a, targetRa: n || 0 }))} />
-                    <p className="text-[11px] text-muted-foreground leading-relaxed">Drives the ball-nose scallop stepover and the maximum feed-per-tooth. 32 µin = 0.8 µm; 63 µin = 1.6 µm; 16 µin = 0.4 µm.</p>
+                    <p className="text-[11px] text-muted-foreground leading-relaxed">{boreMode ? "Calculator-only geometric quality target, not a HSMWorks pitch/tolerance entry and not a finish guarantee. Use the issued Tool feed fields; verify the actual finish in a controlled trial." : "Drives the ball-nose scallop stepover and the maximum feed-per-tooth. 32 µin = 0.8 µm; 63 µin = 1.6 µm; 16 µin = 0.4 µm."}</p>
                   </div>
                 )}
                 <div className="space-y-1.5 col-span-2 pt-2 border-t border-border/60">
@@ -368,7 +399,7 @@ export default function Calculator() {
                     </div>
                   )}
                 </div>
-                {selectedOp?.adaptive && (
+                {!boreMode && selectedOp?.adaptive && (
                   <div className="space-y-1.5 col-span-2">
                     <Label className="text-xs text-muted-foreground">Optimal Load — max stepover ({UNITS[units].length})</Label>
                     <NumberField className="h-9" allowClear placeholder="Auto" value={adaptive.radialLoad ? lenFromImp(adaptive.radialLoad, units) : undefined} onValueChange={(n) => setAdaptive((a) => ({ ...a, radialLoad: n ? lenToImp(n, units) : 0 }))} />
@@ -464,7 +495,7 @@ export default function Calculator() {
               title="Recommended Parameters"
               highlight
               action={result && (
-                <Button size="sm" variant="outline" className="h-8" onClick={() => setSaveOpen(true)}>
+                <Button size="sm" variant="outline" className="h-8" disabled={!!result?.hsmBore && !result.hsmBore.ready} onClick={() => setSaveOpen(true)}>
                   <Save className="w-3.5 h-3.5 mr-1.5" />Save
                 </Button>
               )}
