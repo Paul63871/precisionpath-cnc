@@ -1,6 +1,6 @@
 # PrecisionPath CNC: feeds, speeds and process-planning audit
 
-Original audit: October 22, 2026; HSMWorks Bore field-contract update: October 23, 2026. Scope: the application engine, material/tool/operation tables, slider/objectives, stock allowances, contour corner stock, HSMWorks Bore field mapping, explanations and responsive UI.
+Original audit: October 22, 2026; HSMWorks Bore field-contract update: October 23, 2026; tool identity (coating/helix), stainless finishing-speed policy and deep-stickout guard: October 30, 2026. Scope: the application engine, material/tool/operation tables, slider/objectives, stock allowances, contour corner stock, HSMWorks Bore field mapping, explanations and responsive UI.
 
 ## Executive finding
 
@@ -64,6 +64,22 @@ Copyable entries and Bore saving are withheld when stock is unknown, geometry/re
 “In Computer” establishes cutter-path compensation, not verified feed compensation. The sheet requires a checked G94 centerline-feed post/control basis with no second circular-feed adjustment; post rounding and the actual NC motion must still be inspected. This is especially important because HSM installations and controls can differ ([Autodesk compensation definition](https://help.autodesk.com/cloudhelp/2019/ENU/Inventor-HSM/files/GUID-A3D01231-69F4-40E4-994C-9103B0CF9C0B.htm)).
 
 The Bore-specific contract test currently covers 2,355 cases and 115,423 assertions, including missing inputs, invalid/too-large/tiny pitch, tool type, LOC, insufficient clamp force, stale confirmations, rough-to-finish stock, standalone/legacy Bore IDs, material/priority/intensity combinations, linked feed arithmetic and smallest-orbit constraints. These are numerical and screenshot-mapping checks only. No HSMWorks execution, posted-program round trip, collision validation or physical cutting trial has been performed.
+
+### Tool identity: coatings, helix angles and stainless finishing speed, added October 30
+
+This update adds a tool-identity workflow so the calculator helps confirm what the cutter actually is, instead of silently assuming a coated, standard-helix tool. It also answers a standing question about finishing speeds in stainless.
+
+**Coating identification.** The Coating selector now includes an "Unknown / not confirmed" state that is deliberately distinct from "Uncoated": speeds fall back to the uncoated baseline, the +15% coated-cutter chip-load bonus (Harvey Performance guidance, form cutters) is withheld, and a warning states that the identity must come from the supplier part number/catalog — color alone is not diagnostic, because manufacturers can change a coating's appearance without changing its performance ([Sundi Cutting Tools](https://www.sundicuttingtools.com/news/technology-articles/end-mill-coating-selection-guide/), [Wikipedia endmill](https://en.wikipedia.org/wiki/Endmill), [cnc57 coating types](https://www.cnc57.com/tool-coating-types/)). A new Identify dialog gives the safe identification order (supplier + part number → trade name/family → substrate/edge prep → application table → color last), a color-clue table marked as a first clue only, a typical material-fit map (TiAlN/AlTiN family for steel/stainless; uncoated polished, ZrN, TiB2 or DLC for aluminum/copper/brass, where aluminum-containing coatings risk chip welding/built-up edge), and notes that lab-grade confirmation is XRF/EDS analysis. Aluminum-containing coatings on non-ferrous work now warn about chip welding; uncoated on stainless gets an advisory note.
+
+**Helix angle.** Fluted milling cutters (square, ball, bull-nose, roughing) now have a Helix Angle field: Unknown, Low (≤25°), Standard (~30°), Mid (35–40°), High (≥45°) and Variable helix. Helix carries **no speed or feed multiplier** — helix alone does not establish material suitability (rake, flute count, chip space, edge prep and coating also matter), so the engine only annotates. The guidance follows published application data: 30° is the industry standard balancing sharpness and strength; ~45° is the common stainless choice because the sharper edge lessens work-hardening effects, and high helix suits aluminum's deeper cuts and chip evacuation ([Mitsubishi Materials technical article](https://data.mmc-carbide.com/8216/8854/5185/solid_end_mills_technical_article_en-us.pdf), [Harvey Performance aluminum guide](https://www.harveyperformance.com/in-the-loupe/aluminum-machining-guide/), [Travers helix selection](https://solutions.travers.com/metalworking-machining/milling/the-pros-cons-of-high-and-low-helix-angles), [Nachi end mill training](https://www.nachiamerica.com/content/training/End%20Mill%20Training%20Website.pdf)). Low/standard helix on aluminum warns about chip packing; on stainless it notes the 45° preference. High helix notes upward axial pull (holder grip); variable HELIX is explicitly distinguished from variable PITCH. Unknown helix is flagged and limits the guidance. Changing coating or helix also invalidates prior HSMWorks Bore review confirmations, since the verified tool identity changed.
+
+**Stainless finishing speed.** Finishing operations in this engine carry a blanket 5–10% SFM policy bump over roughing (op-level sfmMult 1.05–1.1, all materials). That direction is correct for stainless, and the results now explain why: finishing's light radial engagement shears cleanly at higher speed, higher speed helps avoid built-up edge, and stainless specifically often needs speeds adjusted UP rather than down — Sandvik recommends higher cutting speed to overcome work hardening, and Seco notes that where general steel usually goes slower for finishing, stainless can be the opposite ([Sandvik milling different materials](https://www.sandvik.coromant.com/en-us/knowledge/milling/milling-different-materials), [Seco stainless cutting tools](https://www.secotools.com/article/how_to_select_stainless_steel_cutting_tools?language=en)). Published stainless data consistently shows finishing at or above roughing speeds (304/316: roughing ~120–150 m/min, finishing ~160–180 m/min per [TiRapid](https://tirapid.com/304-stainless-steel-machinability/) and [UTEC](https://resources.utec.co/steel-machinability/machining-stainless-steel-304-316/); BSSA turning guidance notes work hardening can require INCREASED cutting speed rather than decreased ([BSSA](https://bssa.org.uk/bssa_articles/speeds-and-feeds-for-turning-stainless-steels/))). The conditions are now stated with the note: sharp edge, coolant, enough DOC to cut below the work-hardened layer, and do NOT thin the chip below the tool's minimum chip thickness to chase finish — a new warning fires below ~0.001"/tooth in stainless because rubbing work-hardens the surface; the fix is usually a thicker chip (more feed), not less speed. The 5–10% bump remains a conservative application policy, not a manufacturer chart.
+
+### Proven hard-maple deep-slot reference and deep-stickout guard, added October 30
+
+A proven shop data point is now encoded as a contract: 5/8" 3-flute IMCO Streaker M223N, ZrN coated, 0.030" corner radius, 3.5" stickout (5.6×D), deep-slotting hard maple — 6000 RPM (~982 SFM), 54 IPM, 0.003"/tooth, 15° ramp at 35 IPM, 0.300–0.350" axial DOC, climb, 0.015" roughing allowance plus one full-depth spring pass, air blast, no burning. This is a shop-proven record, not a published chart.
+
+Three lessons from it are now engine behavior. First, a **deep-stickout (slenderness) guard**: cantilever deflection scales with L³/(E·I), so above 4×D stickout (standard end mills carry 3–4×D LOC, so the guard starts strictly above 4×D) axial DOC is capped at 0.5×D per pass and chip load is derated by (4D/L)^1.5, floored at 0.3× — with warnings that name tool whip as the mechanism and solid carbide (~3× HSS Young's modulus) as the fix. HSS/cobalt tools above 4×D in wood get an explicit switch-to-carbide warning. Second, **ZrN on wood** is annotated as the proven low-friction choice that prevents burning at high RPM without coolant, and uncoated cutters above 500 SFM in wood get a burning caution. Third, **wood corner blow-out control**: roughing in wood now documents leaving a light (~0.015") radial finish allowance so unsupported/pre-machined arc corners are not levered against the grain, then one full-depth spring pass at that DOC, climb cut, with ramping exits to avoid full-depth gouges on tab exits. The Hardwood (Maple/Oak) SFM range was raised from 400–600 to 400–1000 SFM to cover the proven 982 SFM point (the proven setup is recorded in the material notes), and the engine remains conservative relative to it — the proven numbers are a reference the user can override via the manufacturer-value lookup, not a ceiling the engine chases.
 
 ### Linked roughing and finishing update
 
@@ -264,20 +280,20 @@ The app is more transparent and better constrained after this audit. It remains 
 
 ## Audit receipt
 
-Run timestamp: 2026-10-23T19:52:26.641Z. Numerical/invariant audit only; no physical cutting certification.
+Run timestamp: 2026-10-30T20:40:09.979Z. Numerical/invariant audit only; no physical cutting certification.
 
 | Item | Actual result |
 |---|---|
 | Materials / tool types / milling ops / turning ops | 49 / 13 / 29 / 12 |
 | Full material × tool type × operation × objective × 3 slider positions | 221676 |
-| Additional substrate/coating representative cases | 178360 |
+| Additional substrate/coating representative cases | 191100 |
 | Extra dimensional / bad-input cases | 202 |
-| Total milling/hole calculation cases | 400238 |
+| Total milling/hole calculation cases | 412978 |
 | Turning cases attempted | 42336 |
-| Additional linked finishing calculations checked | 295048 |
+| Additional linked finishing calculations checked | 305828 |
 | Explicit unsupported turning cases | 5184 |
-| Blocked milling/hole cases (included in counts, NOT certified cuts) | 142461 |
-| Numerical assertions | 9790938 |
+| Blocked milling/hole cases (included in counts, NOT certified cuts) | 144733 |
+| Numerical assertions | 10109830 |
 | Failures | 0 |
 | Legacy fixture files passed | 18 / 18 |
 
@@ -309,7 +325,7 @@ These are read from the application, not newly certified manufacturer recommenda
 | Titanium Grade 5 (Ti-6Al-4V) | titanium | 120–250 | 0.35 | 2.2 | generic drill adjustments |
 | Inconel 718 | superalloy | 40–95 | 0.29 | 2.4 | generic drill adjustments |
 | Tool Steel (A2/D2) | steel_alloy | 150–280 | 0.45 | 2.3 | generic drill adjustments |
-| Hardwood (Maple/Oak) | wood | 400–600 | 1 | 0.12 | generic drill adjustments |
+| Hardwood (Maple/Oak) | wood | 400–1000 | 1 | 0.12 | generic drill adjustments |
 | Softwood (Pine) | wood | 400–1000 | 1.1 | 0.1 | generic drill adjustments |
 | MDF / Plywood | wood | 500–1000 | 1 | 0.1 | generic drill adjustments |
 | Acrylic (PMMA) | plastic | 500–1000 | 0.7 | 0.14 | generic drill adjustments |

@@ -70,7 +70,7 @@ function calculateSingle(input) {
     leadAngle, cornerRadius, includedAngle, tipDiameter, thickness, neckDiameter, pointAngle,
     radialLoad, axialDoc, featureDepth, threadId, tapStyle, holeType, gripDepth,
     jawTypeId, clampForce,
-    priority, featureDiameter, pilotDiameter, targetRa, radiusEngagement, insertIc, entryMethod, helixDiameter,
+    priority, featureDiameter, pilotDiameter, targetRa, radiusEngagement, insertIc, entryMethod, helixDiameter, helixAngle,
   } = input;
 
   const mat = material || PART_MATERIALS.find((m) => m.id === materialId) || PART_MATERIALS[0];
@@ -720,6 +720,32 @@ function calculateSingle(input) {
       stepdown = doc;
     }
   }
+  // --- Deep-stickout (slenderness) guard: tool whip, not just chip clearance ---
+  // Cantilever deflection scales with L^3/(E·I), so an end mill held at more
+  // than ~4×D stickout loses usable axial depth AND feed to whipping/chatter —
+  // the short-tool chip tables do not apply. (Standard end mills carry 3-4×D
+  // LOC, so the guard starts strictly above 4×D.) Proven reference point (user's
+  // shop, October 2026): 5/8" 3-flute solid carbide, ZrN, 0.030" corner radius,
+  // 3.5" stickout (5.6×D) deep-slotting hard maple — clean at 0.300-0.350"
+  // axial DOC (≈0.5×D), 0.003"/tooth, 6000 RPM, climb, where the short-tool
+  // wood chip table alone would have suggested ~4× that feed. Solid carbide
+  // (~3× HSS Young's modulus) is strongly preferred at high L/D; HSS whips.
+  let slenderRatio = 0, slenderDerate = 1;
+  if (!tt.isDrill && !tt.isTap && !formKind && Number.isFinite(loc) && loc > 0 && diameter > 0) {
+    slenderRatio = loc / diameter;
+    if (slenderRatio > 4) {
+      const slenderCap = 0.5 * diameter;
+      if (doc > slenderCap) {
+        inputWarnings.push(`Deep stickout ${loc.toFixed(3)}" = ${slenderRatio.toFixed(1)}×D — axial DOC limited to ${slenderCap.toFixed(3)}" (0.5×D) per pass to control tool whip. Solid carbide (~3× HSS modulus) strongly preferred; prove out with light radial engagement.`);
+        doc = slenderCap;
+        if (featureDepth > 0) {
+          passes = Math.ceil(featureDepth / doc);
+          stepdown = doc;
+        }
+      }
+      slenderDerate = Math.max(0.3, Math.pow(4 / slenderRatio, 1.5));
+    }
+  }
   // Standard 20% slotting speed derate (Kennametal, CGS Tool) — full-width
   // engagement generates more heat per flute pass than partial-width milling.
   // The slot operation already carries 0.8. Only apply the missing reduction
@@ -775,7 +801,7 @@ function calculateSingle(input) {
       // metal-curve chip load a further 0.6x there (steel at 0.375" effective:
       // Harvey 0.00093 in/tooth).
       if (formKind === "concave" && ["steel_mild", "steel_alloy", "stainless", "cast_iron", "titanium", "superalloy"].includes(mat.materialClass)) chipLoad *= 0.6;
-      if (coat.id !== "none") chipLoad *= 1.15; // Harvey: chip loads are for uncoated cutters, +10-20% if coated
+      if (coat.id !== "none" && coat.id !== "unknown") chipLoad *= 1.15; // Harvey: chip loads are for uncoated cutters, +10-20% if coated. Withheld when the coating is unidentified.
     }
     chipLoad *= axialThinning;
   }
@@ -787,6 +813,12 @@ function calculateSingle(input) {
   if (tt.id === "ball_end" && effectiveDiameter < diameter) {
     ballFeedCompensation = diameter / effectiveDiameter;
     chipLoad *= ballFeedCompensation;
+  }
+  // Deep-stickout chip derate (see slenderness guard above): whip/chatter
+  // limits usable feed before the chip table's short-tool value is reachable.
+  if (slenderDerate < 1) {
+    chipLoad *= slenderDerate;
+    inputWarnings.push(`Deep stickout ${slenderRatio.toFixed(1)}×D — chip load derated ×${slenderDerate.toFixed(2)} for tool-whip/chatter control. Proven deep-slot reference: 5.6×D stickout in hard maple ran 0.003"/tooth clean; verify against your setup's chatter behavior.`);
   }
 
   // --- HP-driven radial engagement (HEM/adaptive only) ---
@@ -1262,7 +1294,10 @@ function calculateSingle(input) {
   }
 
   // --- Warnings ---
-  const corner = contourCorner(input, { woc, ipm });
+  // Pass the SAME rounded feed the result displays, so the corner's
+  // single-pass feed stays exactly consistent with the straight feed the
+  // user sees (raw-vs-rounded drift showed up at 5-decimal rounding).
+  const corner = contourCorner(input, { woc, ipm: Number(ipm.toFixed(5)) });
   if (corner?.exceedsStepover) blockingReasons.push(corner.reason);
   if (corner && !corner.fits) blockingReasons.push("Current cutter cannot interpolate the requested inside radius. Use a smaller cutter with clearance.");
   if (corner?.feedBlockReason) blockingReasons.push(corner.feedBlockReason);
@@ -1297,6 +1332,33 @@ function calculateSingle(input) {
   if (op.docMode === "slot" && diameter >= 0.5 && flutes >= 4) warnings.push("Slotting with 4+ flutes at this diameter risks chip packing — consider 2-3 flutes or air blast.");
   if (tt.id === "bull_nose" && cornerRadius && op.docMode === "slot" && doc > cornerRadius * 2) warnings.push("Bull-nose full-width slotting deeper than the corner radius — chip evacuation at the radius is tight; peck or reduce DOC.");
   if (mat.category === "Stainless" || mat.category === "Titanium" || mat.category === "Superalloy") warnings.push("Work hardening / heat-sensitive alloy — keep chip load up, avoid rubbing, use coolant or air.");
+  // --- Tool identity: coating + helix (advisory notes, no invented multipliers).
+  // Color/geometry are clues; the supplier part number + catalog is the authority.
+  if (coat.id === "unknown") warnings.push("Coating NOT CONFIRMED — speeds use the uncoated baseline and the coated-cutter chip-load bonus is withheld. Identify it from the supplier part number/catalog; color alone is not diagnostic (Sundi Cutting Tools, Wikipedia).");
+  if (["tialn", "altin", "naco", "tialsin", "alcrn", "alcrnx", "alcrsin"].includes(coat.id) && ["aluminum", "nonferrous_soft"].includes(mat.materialClass)) warnings.push(`${coat.name} on ${mat.name}: aluminum-containing coatings risk chip welding / built-up edge on non-ferrous work — the usual choices are uncoated polished, ZrN, TiB2 or DLC. Verify with the exact tool's application table.`);
+  if (coat.id === "none" && mat.materialClass === "stainless" && !tt.isTap) warnings.push(`Uncoated cutter on ${mat.name}: workable but slower-wearing; stainless commonly uses a sharp TiAlN/AlTiN-family coated cutter. Verify life in a controlled trial.`);
+  if (["end_mill", "ball_end", "bull_nose", "roughing"].includes(tt.id)) {
+    const hx = helixAngle || "unknown";
+    if (hx === "unknown") warnings.push("Helix angle not confirmed — identify it from the tool catalog (usually in the tool description). Helix affects chip evacuation, force direction and work hardening, so helix-related guidance is limited until confirmed.");
+    else if (hx === "low" || hx === "standard") {
+      if (mat.materialClass === "stainless") warnings.push("Helix note (stainless): a ~45° helix is the common stainless choice — the sharper edge lessens work-hardening effects (Mitsubishi Materials). A low/standard helix still cuts, but keep the chip load up and do not let the edge rub.");
+      if (["aluminum", "nonferrous_soft"].includes(mat.materialClass)) warnings.push(`Helix note (${mat.name}): a low/standard helix gives poorer chip evacuation in gummy non-ferrous material and can pack chips; 35–45°+ is the usual aluminum choice (Harvey Performance).`);
+    } else {
+      if (mat.materialClass === "stainless") warnings.push("Helix note (stainless): mid/high helix gives the sharper shearing action that suits stainless — keep the feed up so the edge cuts below the work-hardened layer instead of rubbing.");
+      if (["steel_mild", "steel_alloy"].includes(mat.materialClass)) warnings.push("Helix note (steel): high helix suits finishing and shearing in steel; heavier roughing favors more edge strength — follow the tool's own application table.");
+    }
+    if (hx === "high") warnings.push("High helix pulls the tool upward axially — confirm solid holder pull-in/grip before heavy cuts (AIMS end-mill guide).");
+    if (hx === "variable") warnings.push("Variable HELIX (flute-to-flute angle variation) is not variable PITCH (flute-spacing variation); both help break harmonic chatter. Follow the manufacturer's stated geometry.");
+  }
+  if (op.finishing && mat.materialClass === "stainless" && !tt.isTap) warnings.push(`Stainless finishing speed: finishing here runs a ${Math.round((op.sfmMult - 1) * 100)}% policy bump over roughing because light radial engagement shears cleanly at higher speed, and higher speed helps avoid built-up edge — Sandvik recommends higher cutting speed to overcome work hardening, and Seco notes stainless often needs speeds adjusted UP rather than down. Conditions: sharp edge, coolant, enough DOC to cut below the work-hardened layer, and do NOT thin the chip below the tool's minimum chip thickness to chase finish — if the finish degrades the fix is usually a thicker chip (more feed), not less speed.`);
+  if (mat.materialClass === "stainless" && !tt.isTap && !tt.isDrill && chipLoad > 0 && chipLoad < 0.001) warnings.push(`Programmed feed per tooth (${chipLoad.toFixed(4)}"/tooth) is very low for stainless — below roughly 0.001"/tooth the edge can rub and work-harden the surface instead of shearing. If the finish degrades, increase feed (thicker chip) rather than slowing down.`);
+  // --- Wood-specific lessons from the user's proven hard-maple deep-slot setup ---
+  if (mat.materialClass === "wood" && !tt.isTap) {
+    if (coat.id === "zrn") warnings.push(`ZrN on ${mat.name}: keeps friction and heat low on wood fibers — helps prevent burning at high RPM without coolant (proven on a 5/8" 3-flute ZrN carbide deep-slotting hard maple at 6000 RPM / ~982 SFM).`);
+    if (coat.id === "none" && sfm > 500) warnings.push(`Uncoated cutter at ${Math.round(sfm)} SFM in ${mat.name}: watch for heat glazing/burning on the fibers — ZrN-coated carbide is the proven low-friction choice for high-RPM wood cutting without coolant.`);
+    if (["profile", "hem", "slot"].includes(op.docMode)) warnings.push("Wood corner blow-out control: leave a light radial finish allowance (~0.015\" in the proven hard-maple setup) so roughing never levers unsupported/pre-machined arc corners against the grain, then take one full-depth spring pass at that small DOC. Climb cut; ramping exits (no cleanup pass) avoid wide full-depth gouges on tab exits.");
+    if (Number.isFinite(loc) && loc > 4 * diameter && ["hss", "cobalt"].includes(tm.id)) warnings.push(`${tm.name} at ${(slenderRatio > 0 ? slenderRatio : loc / diameter).toFixed(1)}×D stickout: switch to solid carbide (~3× the Young's modulus of HSS) — the proven deep-slot setup stops the chatter/tool whipping that HSS cannot at this reach.`);
+  }
   if (mat.id === "cfrp" || mat.id === "g10") warnings.push("Abrasive composite — expect rapid tool wear; diamond-coated carbide recommended.");
   if (mat.id === "g11") warnings.push("Abrasive composite — expect rapid tool wear; diamond-coated carbide recommended. G11's higher-crosslink resin is slightly more abrasive than G10/FR4 — DOC already reduced ~12% for this material; avoid pushing feeds back up to G10 levels.");
   if (coat.verified === false) warnings.push(`${coat.name} speed multiplier is an engineering estimate — no manufacturer speed chart is published for this coating.`);

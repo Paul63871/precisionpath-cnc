@@ -114,8 +114,17 @@ export const PART_MATERIALS = [
     sfmRange: [150, 280], chipLoadFactor: 0.45, hpFactor: 2.30,
     slotDepthFactor: 0.3, profileDepthFactor: 0.9 },
   { id: "wood_hard", name: "Hardwood (Maple/Oak)", category: "Wood", materialClass: "wood",
-    sfmRange: [400, 600], chipLoadFactor: 1.0, hpFactor: 0.12, chipCurve: "soft",
-    slotDepthFactor: 1.0, profileDepthFactor: 2.0 },
+    // Top end raised from 600 to 1000 SFM: proven shop data point (October
+    // 2026) — 5/8" 3-flute ZrN solid carbide deep-slotting hard maple at
+    // 6000 RPM = ~982 SFM, 54 IPM, 0.003"/tooth, 3.5" stickout, air blast,
+    // no burning. The low end keeps the conservative short-tool/entry value.
+    sfmRange: [400, 1000], chipLoadFactor: 1.0, hpFactor: 0.12, chipCurve: "soft",
+    slotDepthFactor: 1.0, profileDepthFactor: 2.0,
+    notes: [
+      "Proven deep-slot reference (user's shop, Oct 2026): 5/8\" 3-flute IMCO Streaker M223N, ZrN, 0.030\" corner radius, 3.5\" stickout — 6000 RPM (~982 SFM), 54 IPM, 0.003\"/tooth, 15° ramp at 35 IPM, 0.300-0.350\" axial DOC, climb, 0.015\" roughing allowance + one full-depth spring pass. Carbide rigidity (~3× HSS modulus) is what makes 3.5\" stickout viable; the deep-stickout guard derates DOC and feed automatically above 3×D.",
+      "ZrN keeps friction/heat low on wood fibers — prevents burning at high RPM without coolant. Avoid dwelling and dull tools: they glaze/burn maple.",
+      "Leave ~0.015\" radial finish allowance on roughing so unsupported/pre-machined arc corners are not levered against the grain, then one full-depth spring pass at that DOC.",
+    ] },
   { id: "wood_soft", name: "Softwood (Pine)", category: "Wood", materialClass: "wood",
     sfmRange: [400, 1000], chipLoadFactor: 1.1, hpFactor: 0.10, chipCurve: "soft",
     slotDepthFactor: 1.0, profileDepthFactor: 2.0 },
@@ -375,14 +384,43 @@ export const COATINGS = [
   { id: "naco", name: "nACo (AlTiN-Si nanocomposite)", sfmMult: 1.05, verified: false, note: "Hardened-steel coating — no published speed ratio; estimate." },
   { id: "tialsin", name: "TiAlSiN (TiAlN-Si nanocomposite)", sfmMult: 1.04, verified: false, note: "Hardened-steel coating — no published speed ratio; estimate." },
   { id: "dlc", name: "DLC / Diamond-like Carbon", sfmMult: 1.02, verified: false, note: "Non-ferrous/abrasive coating — no published speed ratio; estimate." },
+  // Distinct from "none" (Uncoated): "unknown" means the coating has NOT been
+  // identified. Speeds fall back to the uncoated baseline and the chip-load
+  // bonus for coated cutters is withheld until identity is confirmed from the
+  // supplier part number/catalog. Color alone is not diagnostic (Wikipedia:
+  // makers can change appearance without changing performance; Sundi Cutting
+  // Tools: identify from supplier + part number first, treat color as a
+  // secondary check only).
+  { id: "unknown", name: "Unknown / not confirmed", sfmMult: 0.72, verified: true, note: "Identity not established — uncoated baseline used. Identify from supplier part number/catalog; color alone is not diagnostic." },
+];
+
+// Helix-angle selection for fluted milling cutters. These are GUIDANCE
+// categories mapped to published application guidance — they carry NO speed
+// or feed multiplier: helix alone does not establish material suitability
+// (rake, flute count, chip space, edge prep and coating also matter), so the
+// engine only annotates rather than re-rating the cut. Variable HELIX
+// (flute-to-flute angle variation) is distinct from variable PITCH
+// (flute-spacing variation); both are used to break harmonic chatter.
+// Sources: Mitsubishi Materials solid end mill technical article (30° industry
+// standard; 45° for stainless and deeper aluminum cuts), Harvey Performance
+// aluminum guide (35/40/45° specialized aluminum helices), Travers helix
+// selection table, Nachi end mill training (low 10-20° harder material,
+// GP 28-30°, high 40°+).
+export const HELIX_ANGLES = [
+  { id: "unknown", name: "Unknown" },
+  { id: "low", name: "Low (≤25°)" },
+  { id: "standard", name: "Standard (~30°)" },
+  { id: "mid", name: "Mid (35–40°)" },
+  { id: "high", name: "High (≥45°)" },
+  { id: "variable", name: "Variable helix (per manufacturer)" },
 ];
 
 // countField: which state field drives feed (flutes vs inserts).
 // fields: the type-specific inputs shown in the tool form.
 export const TOOL_TYPES = [
-  { id: "end_mill", name: "Square End Mill", sfmMult: 1.0, chipMult: 1.0, docMult: 1.0, isDrill: false, countField: "flutes", fields: ["flutes", "loc"] },
-  { id: "ball_end", name: "Ball End Mill", sfmMult: 1.0, chipMult: 0.9, docMult: 0.85, isDrill: false, countField: "flutes", fields: ["flutes", "loc"] },
-  { id: "bull_nose", name: "Bull-Nose End Mill", sfmMult: 1.0, chipMult: 1.0, docMult: 1.0, isDrill: false, countField: "flutes", fields: ["flutes", "loc", "cornerRadius"] },
+  { id: "end_mill", name: "Square End Mill", sfmMult: 1.0, chipMult: 1.0, docMult: 1.0, isDrill: false, countField: "flutes", fields: ["flutes", "loc", "helixAngle"] },
+  { id: "ball_end", name: "Ball End Mill", sfmMult: 1.0, chipMult: 0.9, docMult: 0.85, isDrill: false, countField: "flutes", fields: ["flutes", "loc", "helixAngle"] },
+  { id: "bull_nose", name: "Bull-Nose End Mill", sfmMult: 1.0, chipMult: 1.0, docMult: 1.0, isDrill: false, countField: "flutes", fields: ["flutes", "loc", "cornerRadius", "helixAngle"] },
   // --- RADIUS CUTTERS -----------------------------------------------------
   // radiusKind marks tools whose cutting profile is (partly) a radius, so the
   // engine uses an EFFECTIVE cutter diameter for speed and chip load.
@@ -401,7 +439,7 @@ export const TOOL_TYPES = [
   { id: "corner_round", name: "Corner Rounding Radius Cutter", sfmMult: 1.0, chipMult: 0.67, docMult: 1.0, isDrill: false, countField: "flutes", radiusKind: "corner_round", fields: ["flutes", "loc", "cornerRadius", "radiusEngagement"] },
   { id: "concave_radius", name: "Concave Radius Cutter", sfmMult: 1.0, chipMult: 0.67, docMult: 1.0, isDrill: false, countField: "flutes", radiusKind: "concave", fields: ["flutes", "loc", "cornerRadius", "radiusEngagement"] },
   { id: "round_insert", name: "Round-Insert Radius Cutter", sfmMult: 1.0, chipMult: 1.0, docMult: 0.5, isDrill: false, countField: "inserts", radiusKind: "round_insert", fields: ["inserts", "loc", "insertIc"] },
-  { id: "roughing", name: "Roughing / Corn Cob", sfmMult: 1.1, chipMult: 1.2, docMult: 1.3, isDrill: false, countField: "flutes", fields: ["flutes", "loc"] },
+  { id: "roughing", name: "Roughing / Corn Cob", sfmMult: 1.1, chipMult: 1.2, docMult: 1.3, isDrill: false, countField: "flutes", fields: ["flutes", "loc", "helixAngle"] },
   { id: "chamfer", name: "Chamfer / V-Bit", sfmMult: 1.0, chipMult: 0.8, docMult: 0.6, isDrill: false, countField: "flutes", fields: ["flutes", "loc", "includedAngle", "tipDiameter"] },
   { id: "face_mill", name: "Face Mill (Indexable)", sfmMult: 1.0, chipMult: 1.1, docMult: 0.5, isDrill: false, countField: "inserts", fields: ["inserts", "loc", "leadAngle"] },
   { id: "drill", name: "Drill", sfmMult: 1.0, chipMult: 1.0, docMult: 1.0, isDrill: true, countField: "flutes", fields: ["flutes", "pointAngle", "loc"] },
@@ -476,6 +514,7 @@ export const FIELD_DEFS = {
   threadId: { label: "Thread Size", kind: "thread" },
   holeType: { label: "Hole Type", kind: "holeType" },
   tapStyle: { label: "Tap Style", kind: "tapStyle" },
+  helixAngle: { label: "Helix Angle", kind: "helix" },
 };
 
 // Operation presets. wocFactor = radial engagement as a fraction of tool diameter,

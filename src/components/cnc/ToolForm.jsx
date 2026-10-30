@@ -1,11 +1,12 @@
 import React, { useState } from "react";
 import { Label } from "@/components/ui/label";
 import ResponsiveSelect from "@/components/cnc/ResponsiveSelect";
-import { TOOL_TYPES, TOOL_MATERIALS, COATINGS, FIELD_DEFS, THREAD_TABLE, TAP_STYLES, HOLE_TYPES, RADIUS_ENGAGEMENTS } from "@/lib/cncData";
+import { TOOL_TYPES, TOOL_MATERIALS, COATINGS, FIELD_DEFS, THREAD_TABLE, TAP_STYLES, HOLE_TYPES, RADIUS_ENGAGEMENTS, HELIX_ANGLES } from "@/lib/cncData";
 import { UNITS, lenFromImp, lenToImp } from "@/lib/units";
 import NumberField from "@/components/NumberField";
 import TapDrillDialog from "@/components/cnc/TapDrillDialog";
-import { Drill } from "lucide-react";
+import CoatingIdDialog from "@/components/cnc/CoatingIdDialog";
+import { Drill, Search } from "lucide-react";
 import ToolIcon from "@/components/cnc/ToolIcon";
 
 const TOOL_BLURB = {
@@ -33,6 +34,7 @@ export default function ToolForm({ value, onChange, units = "imperial" }) {
   const isTap = !!toolType.isTap;
   const selectedThread = THREAD_TABLE.find((t) => t.id === value.threadId) || THREAD_TABLE[0];
   const [drillDialogOpen, setDrillDialogOpen] = useState(false);
+  const [coatingDialogOpen, setCoatingDialogOpen] = useState(false);
 
   const renderField = (key) => {
     const def = FIELD_DEFS[key];
@@ -108,6 +110,24 @@ export default function ToolForm({ value, onChange, units = "imperial" }) {
             onValueChange={(v) => set("radiusEngagement", v)}
             options={list.map((e) => ({ value: e.id, label: e.name }))}
           />
+        </div>
+      );
+    }
+    if (def.kind === "helix") {
+      const cur = HELIX_ANGLES.find((h) => h.id === (value.helixAngle || "unknown"));
+      return (
+        <div key={key} className="space-y-1.5 col-span-3 sm:col-span-1">
+          <Label className="text-xs text-muted-foreground">{def.label}</Label>
+          <ResponsiveSelect
+            value={cur.id}
+            onValueChange={(v) => set("helixAngle", v)}
+            options={HELIX_ANGLES.map((h) => ({ value: h.id, label: h.name }))}
+          />
+          {cur.id === "unknown" && (
+            <p className="text-[11px] text-muted-foreground leading-relaxed">
+              Helix not confirmed — identify it from the tool catalog (it is usually printed in the tool description). It affects chip evacuation and work hardening behavior, so guidance is limited until confirmed.
+            </p>
+          )}
         </div>
       );
     }
@@ -198,7 +218,17 @@ export default function ToolForm({ value, onChange, units = "imperial" }) {
         {fields.map(renderField)}
       </div>
       <div className="space-y-1.5">
-        <Label className="text-xs text-muted-foreground">Coating</Label>
+        <div className="flex items-center justify-between">
+          <Label className="text-xs text-muted-foreground">Coating</Label>
+          <button
+            type="button"
+            onClick={() => setCoatingDialogOpen(true)}
+            className="flex items-center gap-1 text-[11px] font-medium text-brand hover:underline"
+            title="How to identify a tool coating"
+          >
+            <Search className="h-3 w-3" /> Identify
+          </button>
+        </div>
         <ResponsiveSelect
           value={value.coatingId}
           onValueChange={(v) => set("coatingId", v)}
@@ -207,6 +237,11 @@ export default function ToolForm({ value, onChange, units = "imperial" }) {
         {coating && coating.verified === false && (
           <p className="text-xs text-muted-foreground/80 pt-0.5">
             No published manufacturer speed chart exists for this coating — the speed multiplier is an engineering estimate.
+          </p>
+        )}
+        {value.coatingId === "unknown" && (
+          <p className="text-xs text-amber-700 dark:text-amber-300 pt-0.5">
+            Coating not confirmed — speeds use the uncoated baseline and the coated-tool chip-load bonus is withheld. Use Identify to find it from the supplier part number; color alone is not diagnostic.
           </p>
         )}
       </div>
@@ -218,6 +253,7 @@ export default function ToolForm({ value, onChange, units = "imperial" }) {
           isForming={value.tapStyle === "forming"}
         />
       )}
+      <CoatingIdDialog open={coatingDialogOpen} onOpenChange={setCoatingDialogOpen} />
     </div>
   );
 }

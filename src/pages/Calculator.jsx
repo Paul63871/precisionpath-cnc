@@ -148,7 +148,7 @@ export default function Calculator() {
     const feedCount = tool[tt?.countField] || tool.flutes || 2;
     return calculate({
       diameter: tool.diameter, flutes: feedCount, loc: tool.loc,
-      toolMaterialId: tool.toolMaterialId, coatingId: tool.coatingId,
+      toolMaterialId: tool.toolMaterialId, coatingId: tool.coatingId, helixAngle: tool.helixAngle,
       toolTypeId: tool.toolTypeId, material: selectedMaterial, operationId, aggressiveness, machine, override,
       leadAngle: tool.leadAngle, cornerRadius: tool.cornerRadius, insertIc: tool.insertIc, radiusEngagement: tool.radiusEngagement, includedAngle: tool.includedAngle,
       tipDiameter: tool.tipDiameter, thickness: tool.thickness, neckDiameter: tool.neckDiameter, pointAngle: tool.pointAngle,
