@@ -5,6 +5,7 @@ import MachineForm from "@/components/cnc/MachineForm";
 import MaterialSearch from "@/components/cnc/MaterialSearch";
 import ResponsiveSelect from "@/components/cnc/ResponsiveSelect";
 import ToolIcon from "@/components/cnc/ToolIcon";
+import ToolLibrary from "@/components/cnc/ToolLibrary";
 import ProcessExplanation from "@/components/cnc/ProcessExplanation";
 import ResultsInputReview, { reviewLength } from "@/components/cnc/ResultsInputReview";
 import UnitsToggle from "@/components/cnc/UnitsToggle";
@@ -103,6 +104,19 @@ export default function Turning() {
   const needsFinishDia = op.kind === "od" || op.kind === "id";
   const showInsert = !["drill"].includes(op.kind);
   const isThread = op.kind === "thread";
+  const toolFamily = ({ id: "turn_bar", drill: "turn_drill", groove: "turn_groove",
+    parting: "turn_parting", thread: "turn_thread" })[op.kind] ?? "turn_insert";
+  const toolSpecs = { gradeId, ...insert, barId: bar.id, barDiameter: bar.diameter, barOverhang: bar.overhang,
+    drillDiameter: work.drillDiameter, width: groove.width };
+  const loadLibraryTool = (specs) => {
+    setGradeId(specs.gradeId);
+    if (specs.shapeId) setInsert((current) => ({
+      ...current, shapeId: specs.shapeId, ic: specs.ic, noseRadius: specs.noseRadius ?? current.noseRadius,
+    }));
+    if (toolFamily === "turn_bar") setBar({ id: specs.barId, diameter: specs.barDiameter, overhang: specs.barOverhang });
+    if (toolFamily === "turn_drill") setWork((current) => ({ ...current, drillDiameter: specs.drillDiameter }));
+    if (toolFamily === "turn_groove" || toolFamily === "turn_parting") setGroove((current) => ({ ...current, width: specs.width ?? 0 }));
+  };
   const sfmOut = (v) => (units === "metric" ? Math.round(surfaceFromImp(v, units)) : Math.round(v));
   const surfUnit = UNITS[units].surface;
 
@@ -131,6 +145,9 @@ export default function Turning() {
           </Section>
 
           <Section icon={Wrench} title="Insert / Tool" id="turning-tool-inputs">
+            <ToolLibrary key={toolFamily} kind={toolFamily} specs={toolSpecs} onLoad={loadLibraryTool}
+              describe={(specs) => specs.drillDiameter ? reviewLength(specs.drillDiameter, units)
+                : TURNING_GRADES.find((g) => g.id === specs.gradeId)?.name ?? "Tool"} />
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5 col-span-2">
                 <Label className="text-xs text-muted-foreground">Insert Grade / Tool Material</Label>
@@ -289,7 +306,13 @@ export default function Turning() {
                   ["Insert grade / tool material", TURNING_GRADES.find((g) => g.id === gradeId)?.name],
                   ...(op.kind === "drill" ? [["Drill diameter", reviewLength(work.drillDiameter, units)]]
                     : isThread ? [["Thread pitch", reviewLength(thread.pitch, units)]]
-                    : [["Insert shape", INSERT_SHAPES.find((s) => s.id === insert.shapeId)?.name]]),
+                    : [["Insert shape", INSERT_SHAPES.find((s) => s.id === insert.shapeId)?.name],
+                      ["Inscribed circle", reviewLength(insert.ic, units)],
+                      ...(op.kind === "groove" || op.kind === "parting"
+                        ? [["Insert / blade width", groove.width ? reviewLength(groove.width, units) : "Automatic; confirm actual width"]]
+                        : [["Nose radius", insert.noseRadius === 0 ? `0 ${L}` : reviewLength(insert.noseRadius, units)]])]),
+                  ...(op.kind === "id" ? [["Boring bar diameter", reviewLength(bar.diameter, units)],
+                    ["Bar overhang", reviewLength(bar.overhang, units)]] : []),
                 ]}
                 setupFields={[
                   ["Stock material", mat.name],

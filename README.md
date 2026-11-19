@@ -85,6 +85,33 @@ uses hash routing, relative/embedded assets and temporary in-page storage
 compatibility for the SDK. Normal `npm run build` keeps Base44 routing/auth
 behavior; static preview data/AI integrations are not a working Base44 backend.
 
+## Tool Library
+
+In **Calculator → Tool** or **Turning → Insert / Tool**, open **Tool Library**.
+Save the current specs under a name or load an editable copy. Turning lists tools
+for the current turning operation family. The library stores tool dimensions in
+inches regardless of display units. It does not apply stock, operation choices,
+hole depth/type, engagement, or CAM confirmations. Threading on the lathe saves
+the tool grade, not the workpiece thread pitch or number of passes. Verify the
+actual cutter and setup after loading, including any preset bar overhang.
+
+Each signed-in account owns one initially private library. An owner can grant
+editor access to an existing PrecisionPath account by its sign-in email and can
+later revoke access. The shared library appears in the coworker’s library list;
+there is no public link or email invitation. Editors can load, add and explicitly
+update tools, but cannot change access or remove tools. Removing access cannot
+recall any tool data someone already loaded or copied. Updates require the revision
+of the loaded or just-saved tool; to resolve a conflict, load the latest revision
+or use **Save as new tool**. The static preview only demonstrates a local library.
+
+Before publishing to Base44, deploy `LibraryTool` and `ToolLibraryGrant` with
+their deny-all direct entity rules, then the `toolLibrary` and `deleteAccount`
+functions and frontend from the same revision. Validate using test accounts:
+owner and editor can use the shared library, another account and anonymous caller
+cannot, only owner can manage access/delete, revoked users cannot reopen or save
+to the shared library, and direct app-user entity reads/writes are denied. Use
+`npm run test:tool-library` for the local contract tests.
+
 These tests establish numerical behavior, not physical validation of every tool.
 The shared intensity policy reserves at least 20% of entered HP at its top setting,
 but this is an application estimate, not a tool-strength or chatter guarantee.

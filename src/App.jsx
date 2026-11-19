@@ -100,7 +100,7 @@ function App() {
     <AuthProvider>
       <QueryClientProvider client={queryClientInstance}>
         <Router>
-          {import.meta.env.VITE_STATIC_PREVIEW === "true" && <div className="bg-amber-100 text-amber-950 text-xs p-2 text-center">Calculation preview only. Saved data and AI lookups require the hosted Base44 app; preview preferences are temporary.</div>}
+          {import.meta.env.VITE_STATIC_PREVIEW === "true" && <div className="bg-amber-100 text-amber-950 text-xs p-2 text-center">Calculation preview. The demo tool library is browser-only; synced data, coworker sharing and AI lookups require the hosted Base44 app.</div>}
           <ScrollToTop />
           <AuthenticatedApp />
         </Router>

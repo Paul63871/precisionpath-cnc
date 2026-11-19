@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { Cpu, Sliders, Wrench, Boxes, Cog, Sparkles, Save, Loader2 } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import ToolForm from "@/components/cnc/ToolForm";
+import ToolLibrary from "@/components/cnc/ToolLibrary";
 import MaterialForm from "@/components/cnc/MaterialForm";
 import MachineForm from "@/components/cnc/MachineForm";
 import ResultsPanel from "@/components/cnc/ResultsPanel";
@@ -11,7 +12,7 @@ import BrandLookup from "@/components/cnc/BrandLookup";
 import ViseLookup from "@/components/cnc/ViseLookup";
 import UnitsToggle from "@/components/cnc/UnitsToggle";
 import { calculate } from "@/lib/cncEngine";
-import { PART_MATERIALS, TOOL_TYPES, TOOL_MATERIALS, COATINGS, THREAD_TABLE, TAP_STYLES, OPERATIONS, WORKHOLDING_JAW_TYPES } from "@/lib/cncData";
+import { PART_MATERIALS, TOOL_TYPES, TOOL_MATERIALS, COATINGS, THREAD_TABLE, TAP_STYLES, OPERATIONS, WORKHOLDING_JAW_TYPES, HELIX_ANGLES } from "@/lib/cncData";
 import { UNITS, lenFromImp, lenToImp } from "@/lib/units";
 import NumberField from "@/components/NumberField";
 import { Button } from "@/components/ui/button";
@@ -67,6 +68,18 @@ export default function Calculator() {
   const [adaptive, setAdaptive] = useState({ radialLoad: 0, axialDoc: 0, featureDepth: 0, fineStepup: 0, gripDepth: 0, jawTypeId: "smooth_steel", clampForce: 0, featureDiameter: 0, pilotDiameter: 0, targetRa: 0, entryMethod: "", helixDiameter: 0 });
   const [showViseLookup, setShowViseLookup] = useState(false);
   const [prefId, setPrefId] = useState(null);
+
+  const loadLibraryTool = (specs) => {
+    setTool((current) => ({
+      ...DEFAULT_TOOL, ...specs, radiusEngagement: current.radiusEngagement, holeType: current.holeType,
+    }));
+    // A different cutter needs a fresh catalog limit and physical Bore review.
+    setOverride(null);
+    setAdaptive((current) => current.hsmBore ? {
+      ...current, hsmBore: { ...current.hsmBore, maxRampAngle: undefined, verifiedFor: undefined, toolApproved: false,
+        geometryVerified: false, postVerified: false, passesVerified: false },
+    } : current);
+  };
 
   // Load preferences, custom materials, and machine profiles on mount.
   useEffect(() => {
@@ -212,7 +225,12 @@ export default function Calculator() {
       </div>
       <div className="grid lg:grid-cols-5 gap-5">
         <div className="lg:col-span-3 space-y-5">
-          <Section icon={Wrench} title="Tool" id="milling-tool-inputs"><ToolForm value={tool} onChange={setTool} units={units} /></Section>
+          <Section icon={Wrench} title="Tool" id="milling-tool-inputs">
+            <ToolLibrary kind="milling" specs={tool} onLoad={loadLibraryTool}
+              resetKey={location.key}
+              describe={(specs) => `${TOOL_TYPES.find((type) => type.id === specs.toolTypeId)?.name ?? "Tool"} · ${reviewLength(specs.diameter, units)}`} />
+            <ToolForm value={tool} onChange={setTool} units={units} />
+          </Section>
           <Section icon={Boxes} title="Material & Operation" id="milling-material-operation">
             <MaterialForm
               materials={combinedMaterials} materialId={materialId} operationId={operationId}
@@ -512,8 +530,11 @@ export default function Calculator() {
                   ["Coating", COATINGS.find((c) => c.id === tool.coatingId)?.name],
                   [selectedToolType?.isTap ? "Tap major diameter" : "Tool diameter", reviewLength(tapThread?.major ?? tool.diameter, units)],
                   ...(selectedToolType?.isTap
-                    ? [["Thread", tapThread?.name], ["Tap style", TAP_STYLES.find((s) => s.id === (tool.tapStyle || "spiral_point"))?.name]]
-                    : selectedToolType?.countField ? [[selectedToolType.countField === "inserts" ? "Inserts" : "Flutes", selectedToolCount]] : []),
+                    ? [["Thread", tapThread?.name], ["Thread pitch", reviewLength(tapThread?.pitch ?? tool.pitch, units)],
+                      ["Tap style", TAP_STYLES.find((s) => s.id === (tool.tapStyle || "spiral_point"))?.name]] : []),
+                  ...(selectedToolType?.countField ? [[selectedToolType.countField === "inserts" ? "Inserts" : selectedToolType.id === "slitting_saw" ? "Teeth" : "Flutes", selectedToolCount]] : []),
+                  ...(selectedToolType?.fields.includes("loc") ? [["Length of cut (LOC)", reviewLength(tool.loc, units)]] : []),
+                  ...(selectedToolType?.fields.includes("helixAngle") ? [["Helix", HELIX_ANGLES.find((angle) => angle.id === (tool.helixAngle || "unknown"))?.name]] : []),
                 ]}
                 setupFields={[
                   ["Stock material", selectedMaterial.id === materialId ? selectedMaterial.name : "Selection unavailable"],

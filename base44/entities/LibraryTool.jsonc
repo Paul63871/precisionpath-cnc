@@ -1,0 +1,13 @@
+{
+  "name": "LibraryTool",
+  "type": "object",
+  "properties": {
+    "owner_id": { "type": "string" },
+    "name": { "type": "string", "maxLength": 100 },
+    "kind": { "type": "string", "enum": ["milling", "turn_insert", "turn_bar", "turn_drill", "turn_groove", "turn_parting", "turn_thread"] },
+    "specs": { "type": "object" },
+    "revision": { "type": "string" }
+  },
+  "required": ["owner_id", "name", "kind", "specs", "revision"],
+  "rls": { "read": false, "create": false, "update": false, "delete": false }
+}

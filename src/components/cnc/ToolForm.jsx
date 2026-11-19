@@ -149,7 +149,7 @@ export default function ToolForm({ value, onChange, units = "imperial" }) {
     }
     return (
       <div key={key} className="space-y-1.5">
-        <Label className="text-xs text-muted-foreground">{def.label}</Label>
+        <Label className="text-xs text-muted-foreground">{key === "flutes" && toolType.id === "slitting_saw" ? "Teeth" : def.label}</Label>
         <NumberField value={raw} onValueChange={(n) => set(key, Math.max(def.min, Math.round(n)))} />
       </div>
     );

@@ -11,6 +11,11 @@ export default async function(req) {
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
     const filter = { created_by_id: user.id };
     const deleted = {};
+    const library = base44.asServiceRole.entities;
+    // Remove owned tooling and access grants; do not delete a coworker's tools.
+    await library.ToolLibraryGrant.deleteMany({ owner_id: user.id });
+    await library.ToolLibraryGrant.deleteMany({ editor_id: user.id });
+    await library.LibraryTool.deleteMany({ owner_id: user.id });
     deleted.saved_calculations = await base44.entities.SavedCalculation.deleteMany(filter);
     deleted.custom_materials = await base44.entities.CustomMaterial.deleteMany(filter);
     deleted.machine_profiles = await base44.entities.MachineProfile.deleteMany(filter);
