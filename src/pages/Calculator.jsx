@@ -6,11 +6,12 @@ import ToolForm from "@/components/cnc/ToolForm";
 import MaterialForm from "@/components/cnc/MaterialForm";
 import MachineForm from "@/components/cnc/MachineForm";
 import ResultsPanel from "@/components/cnc/ResultsPanel";
+import ResultsInputReview, { reviewLength } from "@/components/cnc/ResultsInputReview";
 import BrandLookup from "@/components/cnc/BrandLookup";
 import ViseLookup from "@/components/cnc/ViseLookup";
 import UnitsToggle from "@/components/cnc/UnitsToggle";
 import { calculate } from "@/lib/cncEngine";
-import { PART_MATERIALS, TOOL_TYPES, OPERATIONS, WORKHOLDING_JAW_TYPES } from "@/lib/cncData";
+import { PART_MATERIALS, TOOL_TYPES, TOOL_MATERIALS, COATINGS, THREAD_TABLE, TAP_STYLES, OPERATIONS, WORKHOLDING_JAW_TYPES } from "@/lib/cncData";
 import { UNITS, lenFromImp, lenToImp } from "@/lib/units";
 import NumberField from "@/components/NumberField";
 import { Button } from "@/components/ui/button";
@@ -23,7 +24,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 
 const DEFAULT_TOOL = { toolTypeId: "end_mill", toolMaterialId: "carbide", coatingId: "altin", diameter: 0.25, flutes: 3, loc: 0.75, inserts: 4, cornerRadius: 0.03, insertIc: 0.5, radiusEngagement: "one_side", includedAngle: 90, tipDiameter: 0, leadAngle: 45, pointAngle: 118, thickness: 0.0625, neckDiameter: 0, threadId: "unc_1_4_20", tapStyle: "spiral_point", holeType: "through" };
 
-function Section({ icon: Icon, title, children, action, highlight }) {
+function Section({ icon: Icon, title, children, action, highlight, id }) {
   return (
     <div className="rounded-xl border border-border bg-card shadow-card overflow-hidden">
       {highlight && <div className="h-1 bg-brand" />}
@@ -33,7 +34,7 @@ function Section({ icon: Icon, title, children, action, highlight }) {
             <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand/10 text-brand">
               <Icon className="w-4 h-4" />
             </span>
-            <h2 className="text-sm font-semibold tracking-tight">{title}</h2>
+            <h2 id={id} tabIndex={id ? -1 : undefined} className="scroll-mt-20 text-sm font-semibold tracking-tight">{title}</h2>
           </div>
           {action}
         </div>
@@ -125,6 +126,9 @@ export default function Calculator() {
 
   const selectedMaterial = combinedMaterials.find((m) => m.id === materialId) || PART_MATERIALS[0];
   const selectedOp = OPERATIONS.find((o) => o.id === operationId);
+  const selectedToolType = TOOL_TYPES.find((t) => t.id === tool.toolTypeId);
+  const tapThread = selectedToolType?.isTap && THREAD_TABLE.find((t) => t.id === tool.threadId);
+  const selectedToolCount = tool[selectedToolType?.countField] || tool.flutes || 2;
   const boreMode = isHsmBore(operationId);
   const hsmVerifyKey = JSON.stringify({
     tool, material: selectedMaterial, operationId, machine, aggressiveness, priority, override,
@@ -208,8 +212,8 @@ export default function Calculator() {
       </div>
       <div className="grid lg:grid-cols-5 gap-5">
         <div className="lg:col-span-3 space-y-5">
-          <Section icon={Wrench} title="Tool"><ToolForm value={tool} onChange={setTool} units={units} /></Section>
-          <Section icon={Boxes} title="Material & Operation">
+          <Section icon={Wrench} title="Tool" id="milling-tool-inputs"><ToolForm value={tool} onChange={setTool} units={units} /></Section>
+          <Section icon={Boxes} title="Material & Operation" id="milling-material-operation">
             <MaterialForm
               materials={combinedMaterials} materialId={materialId} operationId={operationId}
               onChange={(v) => { if (v.materialId) setMaterialId(v.materialId); if (v.operationId) setOperationId(v.operationId); }}
@@ -500,6 +504,22 @@ export default function Calculator() {
                 </Button>
               )}
             >
+              <ResultsInputReview
+                toolTarget="milling-tool-inputs" setupTarget="milling-material-operation"
+                toolFields={[
+                  ["Tool type", selectedToolType?.name],
+                  ["Tool material", TOOL_MATERIALS.find((t) => t.id === tool.toolMaterialId)?.name],
+                  ["Coating", COATINGS.find((c) => c.id === tool.coatingId)?.name],
+                  [selectedToolType?.isTap ? "Tap major diameter" : "Tool diameter", reviewLength(tapThread?.major ?? tool.diameter, units)],
+                  ...(selectedToolType?.isTap
+                    ? [["Thread", tapThread?.name], ["Tap style", TAP_STYLES.find((s) => s.id === (tool.tapStyle || "spiral_point"))?.name]]
+                    : selectedToolType?.countField ? [[selectedToolType.countField === "inserts" ? "Inserts" : "Flutes", selectedToolCount]] : []),
+                ]}
+                setupFields={[
+                  ["Stock material", selectedMaterial.id === materialId ? selectedMaterial.name : "Selection unavailable"],
+                  ["Operation", selectedOp?.name],
+                ]}
+              />
               {override && (
                 <div className="mb-3 flex items-center justify-between gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
                   <span>Using manufacturer values: {override.sfm} SFM · {override.chipLoad}"/tooth</span>

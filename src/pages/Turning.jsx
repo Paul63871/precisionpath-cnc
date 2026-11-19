@@ -6,6 +6,7 @@ import MaterialSearch from "@/components/cnc/MaterialSearch";
 import ResponsiveSelect from "@/components/cnc/ResponsiveSelect";
 import ToolIcon from "@/components/cnc/ToolIcon";
 import ProcessExplanation from "@/components/cnc/ProcessExplanation";
+import ResultsInputReview, { reviewLength } from "@/components/cnc/ResultsInputReview";
 import UnitsToggle from "@/components/cnc/UnitsToggle";
 import NumberField from "@/components/NumberField";
 import { Label } from "@/components/ui/label";
@@ -17,14 +18,14 @@ import {
 import { calculateTurning } from "@/lib/turningEngine";
 import { UNITS, lenFromImp, lenToImp, surfaceFromImp, powerFromImp, mrrFromImp, feedFromImp } from "@/lib/units";
 
-function Section({ icon: Icon, title, children, highlight }) {
+function Section({ icon: Icon, title, children, highlight, id }) {
   return (
     <div className="rounded-xl border border-border bg-card shadow-card overflow-hidden">
       {highlight && <div className="h-1 bg-brand" />}
       <div className="p-5">
         <div className="flex items-center gap-2.5 mb-4">
           <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand/10 text-brand"><Icon className="w-4 h-4" /></span>
-          <h2 className="text-sm font-semibold tracking-tight">{title}</h2>
+          <h2 id={id} tabIndex={id ? -1 : undefined} className="scroll-mt-20 text-sm font-semibold tracking-tight">{title}</h2>
         </div>
         {children}
       </div>
@@ -116,7 +117,7 @@ export default function Turning() {
       </div>
       <div className="grid lg:grid-cols-5 gap-5">
         <div className="lg:col-span-3 space-y-5">
-          <Section icon={Boxes} title="Material & Operation">
+          <Section icon={Boxes} title="Material & Operation" id="turning-material-operation">
             <div className="space-y-4">
               <div className="space-y-1.5">
                 <Label className="text-xs text-muted-foreground">Part Material</Label>
@@ -129,7 +130,7 @@ export default function Turning() {
             </div>
           </Section>
 
-          <Section icon={Wrench} title="Insert / Tool">
+          <Section icon={Wrench} title="Insert / Tool" id="turning-tool-inputs">
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5 col-span-2">
                 <Label className="text-xs text-muted-foreground">Insert Grade / Tool Material</Label>
@@ -282,6 +283,20 @@ export default function Turning() {
               </div>
             </Section>
             <Section icon={Disc3} title="Recommended Parameters" highlight>
+              <ResultsInputReview
+                toolTarget="turning-tool-inputs" setupTarget="turning-material-operation"
+                toolFields={[
+                  ["Insert grade / tool material", TURNING_GRADES.find((g) => g.id === gradeId)?.name],
+                  ...(op.kind === "drill" ? [["Drill diameter", reviewLength(work.drillDiameter, units)]]
+                    : isThread ? [["Thread pitch", reviewLength(thread.pitch, units)]]
+                    : [["Insert shape", INSERT_SHAPES.find((s) => s.id === insert.shapeId)?.name]]),
+                ]}
+                setupFields={[
+                  ["Stock material", mat.name],
+                  ["Operation", op.name],
+                  ...(op.kind === "drill" ? [] : [[op.kind === "id" ? "Starting bore diameter" : "Stock diameter", reviewLength(work.workDiameter, units)]]),
+                ]}
+              />
               <TurnResults result={result} units={units} sfmOut={sfmOut} surfUnit={surfUnit} op={op} />
             </Section>
           </div>
